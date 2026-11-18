@@ -38,6 +38,7 @@ export class Actor {
     this.glance = 0;
     this.glanceV = 0;
     this.glancing = false;
+    this.holdingCue = false;
     this.gTime = 1 + (hashString(character.id) % 20) / 10;
     this.drop = 0;
     this.paceX = 0;
@@ -69,6 +70,7 @@ export class Actor {
   }
 
   dispose() {
+    if (this._arrive) this._finishWalk(false);
     this.root.parent?.remove(this.root);
     const seen = new Set();
     this.root.traverse((obj) => {
@@ -95,6 +97,7 @@ export class Actor {
     this.root.position.x = x;
     this.root.position.z = z;
     this.root.position.y = this.baseY;
+    if (this._arrive) this._finishWalk(false);
   }
 
   walkTo(x, z, abort) {
@@ -226,10 +229,15 @@ export class Actor {
           this.gTime = 0.45;
         }
       }
+      if (this.holdingCue) {
+        this.glance = this.x >= 0 ? 0.72 : -0.72;
+        this.glancing = true;
+      }
       this.glanceV = damp(this.glanceV, this.glance, dt, 4);
     } else {
       this.headLag = damp(this.headLag, 0, dt, 8);
-      this.glanceV = damp(this.glanceV, 0, dt, 8);
+      if (this.holdingCue) this.glance = this.x >= 0 ? 0.72 : -0.72;
+      this.glanceV = damp(this.glanceV, this.holdingCue ? this.glance : 0, dt, 8);
     }
 
     for (const n of NAMES) {
@@ -416,6 +424,7 @@ export class Actor {
     this.add('spine', s * 0.025, 0, 0);
     this.add('chest', s * 0.02, 0, 0);
     this.add('head', Math.sin(this.t * 0.6 + this.seed) * 0.03, Math.sin(this.t * 0.37) * 0.04, 0);
+    if (this.holdingCue) this.add('chest', Math.sin(this.t * 1.3) * 0.04, 0, 0);
   }
 }
 

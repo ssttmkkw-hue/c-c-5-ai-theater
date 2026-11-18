@@ -43,6 +43,10 @@ export const live = {
   subs: 'zh',
   lang: 'zh',
   playing: false,
+  /** True while a live parse may still push beats. */
+  streaming: false,
+  /** Actors are on stage with no cue yet. */
+  holding: false,
   speakerId: null,
   speakerHead: { x: 0, y: 1.7, z: 0.4 },
   soliloquy: false,

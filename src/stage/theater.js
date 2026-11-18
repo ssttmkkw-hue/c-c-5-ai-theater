@@ -92,6 +92,8 @@ export function createTheater(scene) {
     lights.spot.position.z = damp(lights.spot.position.z, tz - 1.4, dt, 1.6);
     const want = focus ? 36 : 14;
     lights.spot.intensity = damp(lights.spot.intensity, want, dt, 2);
+    const houseWant = live.playing ? 0.08 : 0.35;
+    lights.house.intensity = damp(lights.house.intensity, houseWant, dt, 1.6);
     lights.spot.target.updateMatrixWorld();
   }
 
@@ -340,7 +342,7 @@ function buildLights(scene) {
   houseLamp.position.set(0, 2.4, -6.2);
   scene.add(houseLamp);
 
-  return { spot, target, key };
+  return { spot, target, key, house: houseLamp };
 }
 
 function woodTexture() {

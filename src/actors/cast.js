@@ -31,6 +31,33 @@ export class Cast {
     return this.actors.get(id) || null;
   }
 
+  add(character) {
+    if (!character?.id) return null;
+    if (this.actors.has(character.id)) return this.actors.get(character.id);
+    const actor = new Actor(character);
+    const wing = this.actors.size % 2 === 0 ? WINGS.left : WINGS.right;
+    actor.snap(wing.x, wing.z);
+    actor.setVisible(false);
+    this.scene.add(actor.root);
+    this.actors.set(character.id, actor);
+    return actor;
+  }
+
+  replace(character) {
+    const prev = this.actors.get(character.id);
+    if (!prev) return this.add(character);
+    if (prev.visible) return prev;
+    const { x, z } = prev;
+    prev.dispose();
+    this.actors.delete(character.id);
+    const actor = new Actor(character);
+    actor.snap(x, z);
+    actor.setVisible(false);
+    this.scene.add(actor.root);
+    this.actors.set(character.id, actor);
+    return actor;
+  }
+
   visibleList() {
     return [...this.actors.values()].filter((a) => a.visible);
   }
@@ -46,6 +73,7 @@ export class Cast {
       actor.snap(wing.x, wing.z);
       actor.setVisible(false);
       actor.lookRef = 'audience';
+      actor.holdingCue = false;
     }
     live.speakerId = null;
     live.soliloquy = false;

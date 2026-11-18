@@ -15,6 +15,7 @@ export class Voice {
     this.voices = [];
     this.current = null;
     this._finish = null;
+    this._emphasis = 1;
     this.available = typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined';
     this.warm();
   }
@@ -54,6 +55,7 @@ export class Voice {
    */
   speak(text, profile = {}, hooks = {}) {
     this.cancel();
+    this._emphasis = 1;
     const speed = Math.max(0.25, hooks.speed?.() || 1);
     const rate = Math.min(1.7, Math.max(0.55, (profile.rate || 1) * speed));
     const est = estimateSpeechMs(text, rate);
@@ -81,7 +83,7 @@ export class Voice {
         }
         if (hooks.paused?.()) return;
         const spd = Math.max(0.25, hooks.speed?.() || speed);
-        acc += 50 * spd;
+        acc += 50 * spd * (this._emphasis || 1);
         const cap = hooks.muted?.() || this.muted || !started ? est : est * 1.4 + 700;
         if (utterDone || acc >= cap) finish(true);
       }, 50);
@@ -120,6 +122,19 @@ export class Voice {
         started = false;
       }
     });
+  }
+
+  /** Slightly rush the current line. In-flight utterances may ignore rate changes; the fallback timer still speeds up. */
+  emphasize(amount = 1.12) {
+    this._emphasis = Math.min(1.45, (this._emphasis || 1) * amount);
+    if (this.current) {
+      try {
+        this.current.rate = Math.min(1.85, (this.current.rate || 1) * 1.06);
+        this.current.pitch = Math.min(2, (this.current.pitch || 1) + 0.08);
+      } catch {
+        /* some engines freeze the utterance after speak() */
+      }
+    }
   }
 
   pause() {
