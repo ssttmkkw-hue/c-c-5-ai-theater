@@ -38,6 +38,71 @@ function voice(pitch, rate, lang) {
   return { lang, pitch, rate };
 }
 
+function sketchKind(text) {
+  const s = String(text || '').toLowerCase();
+  if (/farewell|goodbye|good-bye|parting|leave me|mystery|secret|ghost|who killed|别|诀|谜|鬼|消失/.test(s)) return 'parting';
+  if (/love|heart|marry|kiss|darling|beloved|爱|恋|心上/.test(s)) return 'love';
+  if (/fight|war|hate|enemy|betray|revenge|杀|恨|敌|仇|吵/.test(s)) return 'conflict';
+  return 'meeting';
+}
+
+function sketchLines(kind, premise, zh) {
+  if (zh) {
+    if (kind === 'conflict') {
+      return [
+        [`${premise}。这句话我不能让它过去。`, 'angry', 'point'],
+        ['那我们就站在两边。我不会先退。', 'emphatic', 'raiseArm'],
+        ['你说你的。我还在这儿。', 'angry', 'handsOnChest'],
+      ];
+    }
+    if (kind === 'love') {
+      return [
+        [`${premise}。留在我看得见的地方。`, 'tender', 'handsOnChest'],
+        ['灯还亮着的时候，我不会走。', 'tender', 'talk'],
+        ['那就让这间屋子安静下来。', 'joyful', 'idle'],
+      ];
+    }
+    if (kind === 'parting') {
+      return [
+        [`${premise}。门已经开了。`, 'sad', 'point'],
+        ['谁走，谁留在暗处？', 'curious', 'shrug'],
+        ['先别跟着。我们只看着门槛。', 'contemplative', 'idle'],
+      ];
+    }
+    return [
+      [`${premise}。我把它放在我们中间。`, 'emphatic', 'point'],
+      ['我听见了。就从这一句开始，不必更大。', 'curious', 'talk'],
+      ['停一会儿。其余的可以在门外等。', 'tender', 'handsOnChest'],
+    ];
+  }
+  if (kind === 'conflict') {
+    return [
+      [`${premise}. I will not let that pass.`, 'angry', 'point'],
+      ['Then we stand on opposite sides, and I will not step back.', 'emphatic', 'raiseArm'],
+      ['Say what you must. I am still here.', 'angry', 'handsOnChest'],
+    ];
+  }
+  if (kind === 'love') {
+    return [
+      [`${premise}. Stay where I can see you.`, 'tender', 'handsOnChest'],
+      ['I am not leaving the light. Not while you are in it.', 'tender', 'talk'],
+      ['Then this is the room. We can be quiet in it.', 'joyful', 'idle'],
+    ];
+  }
+  if (kind === 'parting') {
+    return [
+      [`${premise}. The door is already open.`, 'sad', 'point'],
+      ['Who goes, and who is left with the dark?', 'curious', 'shrug'],
+      ['We do not follow yet. We only watch the threshold.', 'contemplative', 'idle'],
+    ];
+  }
+  return [
+    [`${premise}. I set it down between us.`, 'emphatic', 'point'],
+    ['I heard you. We begin with that, and nothing larger.', 'curious', 'talk'],
+    ['A moment, then. The rest can wait outside.', 'tender', 'handsOnChest'],
+  ];
+}
+
 /**
  * @returns {object} Performance JSON for a two-hander sketch
  */
@@ -92,92 +157,26 @@ export function premisePerformance(text, options = {}) {
       ];
   const a = characters[0].id;
   const b = characters[1].id;
-  const beats = zh
-    ? [
-        {
-          id: 'b1',
-          kind: 'speech',
-          speaker: a,
-          line: `你交给我的是这一句：${premise}。我把它留在灯下。`,
-          lineZh: `你交给我的是这一句：${premise}。我把它留在灯下。`,
-          emotion: 'emphatic',
-          gesture: 'point',
-          moveTo: 'dl',
-          lookAt: 'audience',
-          enterFrom: 'left',
-          exitTo: null,
-          pauseMs: 280,
-        },
-        {
-          id: 'b2',
-          kind: 'speech',
-          speaker: b,
-          line: '我听见了。那我们就顺着这一句演下去，看它把我们带到哪儿。',
-          lineZh: '我听见了。那我们就顺着这一句演下去，看它把我们带到哪儿。',
-          emotion: 'curious',
-          gesture: 'talk',
-          moveTo: 'dr',
-          lookAt: a,
-          enterFrom: 'right',
-          exitTo: null,
-          pauseMs: 320,
-        },
-        {
-          id: 'b3',
-          kind: 'speech',
-          speaker: a,
-          line: '先在这儿站一会儿。后面的话可以再来，这一句已经够我们遇见。',
-          lineZh: '先在这儿站一会儿。后面的话可以再来，这一句已经够我们遇见。',
-          emotion: 'tender',
-          gesture: 'handsOnChest',
-          moveTo: null,
-          lookAt: b,
-          enterFrom: null,
-          exitTo: null,
-          pauseMs: 360,
-        },
-      ]
-    : [
-        {
-          id: 'b1',
-          kind: 'speech',
-          speaker: a,
-          line: `You handed me this: ${premise}. I will keep it in the light.`,
-          emotion: 'emphatic',
-          gesture: 'point',
-          moveTo: 'dl',
-          lookAt: 'audience',
-          enterFrom: 'left',
-          exitTo: null,
-          pauseMs: 280,
-        },
-        {
-          id: 'b2',
-          kind: 'speech',
-          speaker: b,
-          line: 'I heard you. Then we follow the sentence, and see where it leads.',
-          emotion: 'curious',
-          gesture: 'talk',
-          moveTo: 'dr',
-          lookAt: a,
-          enterFrom: 'right',
-          exitTo: null,
-          pauseMs: 320,
-        },
-        {
-          id: 'b3',
-          kind: 'speech',
-          speaker: a,
-          line: 'We stay a moment. More can arrive later. This is already enough to meet.',
-          emotion: 'tender',
-          gesture: 'handsOnChest',
-          moveTo: null,
-          lookAt: b,
-          enterFrom: null,
-          exitTo: null,
-          pauseMs: 360,
-        },
-      ];
+  const kind = sketchKind(premise);
+  const lines = sketchLines(kind, premise, zh);
+  const beats = lines.map((row, index) => {
+    const speaker = index === 1 ? b : a;
+    const beat = {
+      id: `b${index + 1}`,
+      kind: 'speech',
+      speaker,
+      line: row[0],
+      emotion: row[1],
+      gesture: row[2],
+      moveTo: index === 0 ? 'dl' : index === 1 ? 'dr' : null,
+      lookAt: index === 0 ? b : index === 1 ? a : b,
+      enterFrom: index === 0 ? 'left' : index === 1 ? 'right' : null,
+      exitTo: null,
+      pauseMs: index === 2 ? 360 : index === 1 ? 320 : 280,
+    };
+    if (zh) beat.lineZh = row[0];
+    return beat;
+  });
   return {
     version: 1,
     title,

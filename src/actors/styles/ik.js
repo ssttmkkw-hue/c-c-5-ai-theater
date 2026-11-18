@@ -50,7 +50,11 @@ function blendTargets(actor) {
     const a = cur[side];
     const p = prev[side];
     if (a && p) out[side] = a.map((v, i) => p[i] * (1 - w) + v * w);
-    else out[side] = (a || p).slice();
+    else if (a) out[side] = a.slice();
+    else if (p) {
+      const rest = side === 'L' ? [-0.24, 0.78, 0.04] : [0.24, 0.78, 0.04];
+      out[side] = p.map((v, i) => rest[i] * w + v * (1 - w));
+    }
   }
   if (actor.talking && !out.R && actor.gesture !== 'weep' && actor.gesture !== 'kneel' && actor.gesture !== 'bow') {
     out.R = raw('talk', actor.talkAmp).R;

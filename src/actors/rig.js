@@ -160,22 +160,23 @@ export function createRig(character, options = {}) {
     const shell = head.children.find((child) => child.userData.outline && child.geometry === GEO.head);
     if (shell) shell.scale.set(1.14 * 1.07, 1.04 * 1.07, 1.1 * 1.07);
   }
-  mesh(GEO.nose, skin, head, 0, 0.18, -0.2);
+  mesh(GEO.nose, skin, head, 0, 0.18, -0.2 + (toonMode ? -0.1 : 0));
 
-  const eyeL = mesh(GEO.eye, white, head, -0.08, 0.24, -0.17);
-  const eyeR = mesh(GEO.eye, white, head, 0.08, 0.24, -0.17);
+  const faceOut = toonMode ? -0.12 : 0;
+  const eyeL = mesh(GEO.eye, white, head, -0.08, 0.24, -0.17 + faceOut);
+  const eyeR = mesh(GEO.eye, white, head, 0.08, 0.24, -0.17 + faceOut);
   const pupilL = mesh(GEO.pupil, pupil, eyeL, 0, 0, -0.03);
   const pupilR = mesh(GEO.pupil, pupil, eyeR, 0, 0, -0.03);
-  const lidL = mesh(GEO.lid, skin, head, -0.08, 0.25, -0.2);
-  const lidR = mesh(GEO.lid, skin, head, 0.08, 0.25, -0.2);
-  const browL = joint(head, 'browL', -0.08, 0.31, -0.2, joints);
-  const browR = joint(head, 'browR', 0.08, 0.31, -0.2, joints);
+  const lidL = mesh(GEO.lid, skin, head, -0.08, 0.25, -0.2 + faceOut);
+  const lidR = mesh(GEO.lid, skin, head, 0.08, 0.25, -0.2 + faceOut);
+  const browL = joint(head, 'browL', -0.08, 0.31, -0.2 + faceOut, joints);
+  const browR = joint(head, 'browR', 0.08, 0.31, -0.2 + faceOut, joints);
   mesh(GEO.brow, hairMat, browL, 0, 0, 0);
   mesh(GEO.brow, hairMat, browR, 0, 0, 0);
   lidL.scale.y = 0.12;
   lidR.scale.y = 0.12;
 
-  const jaw = joint(head, 'jaw', 0, 0.1, -0.12, joints);
+  const jaw = joint(head, 'jaw', 0, 0.1, -0.12 + (toonMode ? -0.1 : 0), joints);
   const mouth = mesh(GEO.mouth, mouthMat, jaw, 0, 0, -0.08);
 
   const hair = mesh(GEO.hair, hairMat, head, 0, 0.3, 0.02);
