@@ -15,8 +15,9 @@ const GEO = {
   neck: new THREE.CylinderGeometry(0.06, 0.07, 0.09, 8),
   head: new THREE.SphereGeometry(0.23, 16, 14),
   eye: new THREE.SphereGeometry(0.045, 8, 8),
-  pupil: new THREE.SphereGeometry(0.022, 8, 8),
+  pupil: new THREE.SphereGeometry(0.026, 8, 8),
   lid: new THREE.BoxGeometry(0.09, 0.07, 0.02),
+  brow: new THREE.BoxGeometry(0.11, 0.028, 0.03),
   mouth: new THREE.BoxGeometry(0.09, 0.025, 0.02),
   nose: new THREE.SphereGeometry(0.035, 8, 8),
   hand: new THREE.SphereGeometry(0.055, 8, 8),
@@ -63,6 +64,7 @@ function joint(parent, name, x, y, z, joints) {
   const g = new THREE.Group();
   g.name = name;
   g.position.set(x, y, z);
+  if (name.startsWith('shoulder')) g.rotation.order = 'ZXY';
   parent.add(g);
   joints[name] = g;
   return g;
@@ -110,10 +112,14 @@ export function createRig(character) {
 
   const eyeL = mesh(GEO.eye, white, head, -0.08, 0.24, -0.17);
   const eyeR = mesh(GEO.eye, white, head, 0.08, 0.24, -0.17);
-  mesh(GEO.pupil, pupil, eyeL, 0, 0, -0.03);
-  mesh(GEO.pupil, pupil, eyeR, 0, 0, -0.03);
+  const pupilL = mesh(GEO.pupil, pupil, eyeL, 0, 0, -0.03);
+  const pupilR = mesh(GEO.pupil, pupil, eyeR, 0, 0, -0.03);
   const lidL = mesh(GEO.lid, skin, head, -0.08, 0.25, -0.2);
   const lidR = mesh(GEO.lid, skin, head, 0.08, 0.25, -0.2);
+  const browL = joint(head, 'browL', -0.08, 0.31, -0.2, joints);
+  const browR = joint(head, 'browR', 0.08, 0.31, -0.2, joints);
+  mesh(GEO.brow, hairMat, browL, 0, 0, 0);
+  mesh(GEO.brow, hairMat, browR, 0, 0, 0);
   lidL.scale.y = 0.12;
   lidR.scale.y = 0.12;
 
@@ -171,7 +177,7 @@ export function createRig(character) {
     root.add(glow);
   }
 
-  return { root, joints, materials, sword, lidL, lidR, mouth, eyeL, eyeR, ghost };
+  return { root, joints, materials, sword, lidL, lidR, mouth, eyeL, eyeR, pupilL, pupilR, browL, browR, ghost };
 }
 
 function dress(costume, kit) {

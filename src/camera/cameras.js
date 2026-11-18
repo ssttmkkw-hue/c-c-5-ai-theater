@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { AUDIENCE_CAM, STAGE_Y } from '../stage/layout.js';
+import { live } from '../runtime/live.js';
 import { damp } from '../util/math.js';
 
 const _forward = new THREE.Vector3();
@@ -23,6 +24,7 @@ export class CameraRig {
     this.desiredPos = new THREE.Vector3(...AUDIENCE_CAM.pos);
     this.desiredLook = new THREE.Vector3(...AUDIENCE_CAM.look);
     this._look = new THREE.Vector3();
+    this.t = 0;
     this.snapToAudience();
   }
 
@@ -72,15 +74,25 @@ export class CameraRig {
   }
 
   update(dt) {
+    this.t += dt;
     if (this.mode === 'free') {
       this.applyKeys(dt);
       this.controls.update();
       return;
     }
     const k = 2.1;
-    this.camera.position.x = damp(this.camera.position.x, this.desiredPos.x, dt, k);
-    this.camera.position.y = damp(this.camera.position.y, this.desiredPos.y, dt, k);
-    this.camera.position.z = damp(this.camera.position.z, this.desiredPos.z, dt, k);
+    let ox = 0;
+    let oy = 0;
+    let oz = 0;
+    if (this.mode === 'audience') {
+      ox = Math.sin(this.t * 0.31) * 0.018 + Math.sin(this.t * 0.13) * 0.007;
+      oy = Math.sin(this.t * 0.53) * 0.01;
+      oz = Math.sin(this.t * 0.23) * 0.012;
+      if (live.soliloquy) oz += 0.22;
+    }
+    this.camera.position.x = damp(this.camera.position.x, this.desiredPos.x + ox, dt, k);
+    this.camera.position.y = damp(this.camera.position.y, this.desiredPos.y + oy, dt, k);
+    this.camera.position.z = damp(this.camera.position.z, this.desiredPos.z + oz, dt, k);
     this._look.x = damp(this._look.x, this.desiredLook.x, dt, k);
     this._look.y = damp(this._look.y, this.desiredLook.y, dt, k);
     this._look.z = damp(this._look.z, this.desiredLook.z, dt, k);

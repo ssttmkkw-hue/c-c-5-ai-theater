@@ -548,11 +548,12 @@ export class Director {
     if (actor) {
       actor.setEmotion(beat.emotion || 'neutral');
       actor.setGesture(beat.gesture || (beat.line ? 'talk' : 'idle'));
+      let enteredFrom = null;
       if (!actor.visible) {
-        const side = beat.enterFrom || (hashString(actor.id) % 2 === 0 ? 'left' : 'right');
-        const wing = WINGS[side] || WINGS.left;
+        enteredFrom = beat.enterFrom || (hashString(actor.id) % 2 === 0 ? 'left' : 'right');
+        const wing = WINGS[enteredFrom] || WINGS.left;
         actor.snap(wing.x, wing.z);
-        actor.yaw = side === 'right' ? -0.6 : 0.6;
+        actor.yaw = enteredFrom === 'right' ? -0.6 : 0.6;
         actor.prevYaw = actor.yaw;
         actor.setVisible(true);
       }
@@ -560,8 +561,11 @@ export class Director {
       for (const other of others) other.lookRef = actor.id;
       actor.lookRef = beat.lookAt || (others.length ? others[others.length - 1].id : 'audience');
       live.soliloquy = (actor.lookRef === 'audience' || !others.length) && others.length === 0;
-      if (beat.moveTo) {
-        const point = standPoint(beat.moveTo);
+      // A line with no mark must not be spoken from the wings. Fresh entrances
+      // walk to the near downstage mark before the cue.
+      const move = beat.moveTo || (enteredFrom ? (enteredFrom === 'right' ? 'dr' : 'dl') : null);
+      if (move) {
+        const point = standPoint(move);
         const arrived = await actor.walkTo(point.x, point.z, () => gen !== this.generation || !this.playing);
         if (!arrived || gen !== this.generation || !this.playing) return false;
       }

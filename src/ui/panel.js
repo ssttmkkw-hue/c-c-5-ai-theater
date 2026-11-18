@@ -11,6 +11,7 @@ const EXP_KEYS = {
   posture: 'expPosture',
   audience: 'expAudience',
   curtains: 'expCurtains',
+  ikTargets: 'expIkTargets',
 };
 
 export function mountUI(api) {

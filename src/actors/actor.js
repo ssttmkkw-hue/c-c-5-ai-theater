@@ -7,7 +7,7 @@ import { clamp, damp, dampAngle, hashString } from '../util/math.js';
 
 const KNOWN = new Set(GESTURES);
 const NAMES = [
-  'pelvis', 'spine', 'chest', 'neck', 'head', 'jaw',
+  'pelvis', 'spine', 'chest', 'neck', 'head', 'jaw', 'browL', 'browR',
   'shoulderL', 'elbowL', 'wristL', 'shoulderR', 'elbowR', 'wristR',
   'hipL', 'kneeL', 'ankleL', 'hipR', 'kneeR', 'ankleR',
 ];
@@ -25,6 +25,13 @@ export class Actor {
     this.gesture = 'idle';
     this.gestureBlend = 1;
     this.gestureAge = 0;
+    this.prevGesture = 'idle';
+    this.prevBlend = 0;
+    this.prevAge = 0;
+    this.prevTalkAmp = 0;
+    this.talkAmp = 0;
+    this.talkTarget = 0;
+    this.talkClock = 0.4 + (hashString(character.id) % 7) / 10;
     this.talking = false;
     this.visible = false;
     this.lookRef = 'audience';
@@ -51,6 +58,16 @@ export class Actor {
     this._arrive = null;
     this.lipPulse = 0;
     this.syllable = 0;
+    this.lookRel = 0;
+    this.lookPitch = 0;
+    this.eyeX = 0;
+    this.eyeY = 0;
+    this.saccX = 0;
+    this.saccY = 0;
+    this.saccT = 0.4;
+    this.browLift = 0;
+    this.browTilt = 0;
+    this._walkEase = 1;
     this.blinkAcc = (hashString(character.id) % 10) / 5;
     this.blinkWave = 0;
     this.nextBlink = 2;
@@ -66,6 +83,8 @@ export class Actor {
     this.lidL = rig.lidL;
     this.lidR = rig.lidR;
     this.mouth = rig.mouth;
+    this.pupilL = rig.pupilL;
+    this.pupilR = rig.pupilR;
     this.root.visible = false;
   }
 
@@ -111,6 +130,7 @@ export class Actor {
     }
     this.goal = { x, z };
     this.walking = true;
+    this._walkEase = 0;
     if (this._arrive) this._arrive(false);
     return new Promise((resolve) => {
       this._arrive = resolve;
@@ -132,6 +152,10 @@ export class Actor {
   setGesture(name) {
     const next = KNOWN.has(name) ? name : 'talk';
     if (next === this.gesture) return;
+    this.prevGesture = this.gesture;
+    this.prevBlend = this.gestureBlend;
+    this.prevAge = this.gestureAge;
+    this.prevTalkAmp = this.talkAmp;
     this.gesture = next;
     this.gestureBlend = 0;
     this.gestureAge = 0;
@@ -169,7 +193,9 @@ export class Actor {
         const dx = this.goal.x - this.x;
         const dz = this.goal.z - this.z;
         const dist = Math.hypot(dx, dz);
-        const step = 2.55 * speed * dt;
+        this._walkEase = Math.min(1, this._walkEase + dt / 0.2);
+        const arrive = dist < 0.55 ? Math.max(0.32, dist / 0.55) : 1;
+        const step = 2.55 * speed * this._walkEase * arrive * dt;
         if (dist <= step || dist < 0.05) {
           this.x = this.goal.x;
           this.z = this.goal.z;
@@ -203,15 +229,20 @@ export class Actor {
     const bob = Math.abs(Math.sin(this.walkPhase)) * 0.035 * this.walkAmp;
 
     let targetYaw = this.yaw;
+    const lookDx = this.look.x - this.x;
+    const lookDz = this.look.z - this.z;
+    const lookDist = Math.hypot(lookDx, lookDz);
     if (this.walking && this._faceX != null) {
       targetYaw = Math.atan2(this._faceX, -this._faceZ);
-    } else {
-      const dx = this.look.x - this.x;
-      const dz = this.look.z - this.z;
-      if (Math.hypot(dx, dz) > 0.12) targetYaw = Math.atan2(dx, -dz);
+    } else if (lookDist > 0.12) {
+      targetYaw = Math.atan2(lookDx, -lookDz);
     }
     if (this.gesture === 'turnAway') targetYaw += Math.PI * 0.82;
-    this.yaw = dampAngle(this.yaw, targetYaw, dt, this.walking ? 7 : 3.2);
+    const yawGap = Math.abs(wrap(targetYaw - this.yaw));
+    const yawRate = this.walking ? 7 : (yawGap > 0.65 ? 2.4 : 0.75);
+    this.yaw = dampAngle(this.yaw, targetYaw, dt, yawRate);
+    this.lookRel = wrap(targetYaw - this.yaw);
+    this.lookPitch = Math.atan2(this.look.y - (this.baseY + 1.55), Math.max(0.25, lookDist));
     const turned = wrap(this.yaw - this.prevYaw);
     this.prevYaw = this.yaw;
     if (live.experiments.lookAt) {
@@ -246,13 +277,16 @@ export class Actor {
       a.y = 0;
       a.z = 0;
     }
+    this.updateTalk(dt, speed);
     this.applyWalk();
     this.applyGesture();
     if (live.experiments.posture) this.applyPosture();
     if (live.experiments.idle && !this.walking) this.applyIdle();
+    this.applyBrows(dt);
 
     const head = this.acc.head;
-    head.y += clamp(this.headLag + this.glanceV, -0.85, 0.85);
+    head.y += clamp(this.headLag + this.glanceV + this.lookRel * 0.85, -0.9, 0.9);
+    head.x += clamp(-this.lookPitch * 0.45, -0.35, 0.35);
 
     for (const n of NAMES) {
       const j = this.joints[n];
@@ -265,14 +299,14 @@ export class Actor {
       this.syllable += dt * (9 + this.lipPulse * 8) * speed;
       this.lipPulse = Math.max(0, this.lipPulse - dt * 2.5);
       const open = Math.abs(Math.sin(this.syllable));
-      this.joints.jaw.rotation.x += open * 0.45;
-      this.mouth.scale.y = 0.7 + open * 2.1;
-      this.joints.head.rotation.x += open * 0.035;
-    } else {
+      if (this.joints.jaw) this.joints.jaw.rotation.x += open * 0.45;
+      if (this.mouth) this.mouth.scale.y = 0.7 + open * 2.1;
+      if (this.joints.head) this.joints.head.rotation.x += open * 0.035;
+    } else if (this.mouth) {
       this.mouth.scale.y = damp(this.mouth.scale.y, 1, dt, 8);
     }
 
-    if (live.experiments.idle) {
+    if (live.experiments.idle && this.lidL && this.lidR) {
       this.blinkAcc += dt;
       if (this.blinkAcc > this.nextBlink) {
         this.blinkWave += dt * 13;
@@ -286,12 +320,14 @@ export class Actor {
       const y = 0.12 + shut * 1.05;
       this.lidL.scale.y = y;
       this.lidR.scale.y = y;
-    } else {
+    } else if (this.lidL && this.lidR) {
       this.lidL.scale.y = 0.12;
       this.lidR.scale.y = 0.12;
     }
 
-    this.sword.visible = this.gesture === 'drawSword' && this.gestureBlend > 0.35;
+    this.applyPupils(dt);
+
+    if (this.sword) this.sword.visible = this.gesture === 'drawSword' && this.gestureBlend > 0.35;
 
     const idleSway = live.experiments.idle && !this.walking ? Math.sin(this.t * 0.8 + this.seed) * 0.02 : 0;
     this.root.position.set(this.x + this.paceX, this.baseY + this.drop + bob, this.z);
@@ -322,63 +358,66 @@ export class Actor {
     this.add('elbowR', Math.abs(s) * 0.25 * arms, 0, 0);
   }
 
+  updateTalk(dt) {
+    const beating = this.talking && (this.gesture === 'talk' || this.gesture === 'idle');
+    if (beating) {
+      this.talkClock -= dt;
+      if (this.talkClock <= 0) {
+        this.talkTarget = 0.4 + ((this.seed + Math.floor(this.t * 17)) % 10) / 12;
+        this.talkClock = 0.28 + ((this.seed + Math.floor(this.t * 9)) % 8) / 9;
+      }
+    } else {
+      this.talkTarget = 0;
+    }
+    this.talkAmp = damp(this.talkAmp, this.talkTarget, dt, beating ? 8 : 6);
+  }
+
+  applyPose(pose, w) {
+    if (!pose || w < 0.001) return;
+    for (const name of Object.keys(pose)) {
+      const e = pose[name];
+      this.add(name, e[0] * w, e[1] * w, e[2] * w);
+    }
+  }
+
   applyGesture() {
     const b = this.gestureBlend;
-    const g = this.gesture;
-    const age = this.gestureAge;
-    if (g === 'point') {
-      this.add('shoulderR', 1.22 * b, -0.25 * b, -0.15 * b);
-      this.add('elbowR', 0.28 * b, 0, 0);
-    } else if (g === 'handsOnChest') {
-      this.add('shoulderL', 0.95 * b, 0, 0.55 * b);
-      this.add('elbowL', 1.25 * b, 0, 0);
-      this.add('shoulderR', 0.95 * b, 0, -0.55 * b);
-      this.add('elbowR', 1.25 * b, 0, 0);
-    } else if (g === 'raiseArm') {
-      this.add('shoulderR', 2.35 * b, -0.15 * b, -0.2 * b);
-      this.add('elbowR', 0.15 * b, 0, 0);
-    } else if (g === 'kneel') {
-      this.add('hipL', -0.55 * b, 0, 0);
-      this.add('hipR', -0.55 * b, 0, 0);
-      this.add('kneeL', 1.55 * b, 0, 0);
-      this.add('kneeR', 1.55 * b, 0, 0);
-      this.add('chest', 0.2 * b, 0, 0);
-      this.add('head', 0.2 * b, 0, 0);
-    } else if (g === 'bow') {
-      this.add('chest', 0.95 * b, 0, 0);
-      this.add('head', 0.4 * b, 0, 0);
-      this.add('shoulderL', 0.3 * b, 0, 0);
-      this.add('shoulderR', 0.3 * b, 0, 0);
-    } else if (g === 'weep') {
-      this.add('shoulderL', 1.15 * b, 0, 0.35 * b);
-      this.add('elbowL', 1.45 * b, 0, 0);
-      this.add('shoulderR', 1.15 * b, 0, -0.35 * b);
-      this.add('elbowR', 1.45 * b, 0, 0);
-      this.add('head', 0.45 * b, 0, 0);
-    } else if (g === 'give' || g === 'take') {
-      this.add('shoulderR', 1.05 * b, -0.45 * b, -0.1 * b);
-      this.add('elbowR', 0.4 * b, 0, 0);
-    } else if (g === 'drawSword') {
-      const strike = Math.min(1, age * 1.4);
-      this.add('shoulderR', (0.4 + strike * 1.15) * b, -0.35 * b, -0.25 * b);
-      this.add('elbowR', 0.45 * b, 0, 0);
-    } else if (g === 'shrug') {
-      const pop = Math.sin(Math.min(age * 5, Math.PI));
-      this.add('shoulderL', 0.15 * b, 0, -0.45 * b * pop);
-      this.add('shoulderR', 0.15 * b, 0, 0.45 * b * pop);
-      this.add('head', 0, 0, 0.12 * b);
-    } else if (g === 'nod') {
-      this.add('head', Math.sin(age * 6) * 0.28 * b, 0, 0);
-    } else if (g === 'shakeHead') {
-      this.add('head', 0, Math.sin(age * 8) * 0.4 * b, 0);
-    } else if (g === 'talk' || (this.talking && g === 'idle')) {
-      const s = Math.sin(this.t * 7);
-      this.add('shoulderR', (0.42 + s * 0.12) * b, -0.1 * b, 0);
-      this.add('elbowR', (0.35 + Math.abs(s) * 0.15) * b, 0, 0);
+    this.applyPose(poseOf(this.prevGesture, this.prevAge, this.prevTalkAmp), (1 - b) * this.prevBlend);
+    const talkAmp = this.gesture === 'talk' || this.gesture === 'idle' ? this.talkAmp : 0;
+    this.applyPose(poseOf(this.gesture, this.gestureAge, talkAmp), b);
+    if (this.talking && this.gesture === 'idle') {
+      this.applyPose(poseOf('talk', this.gestureAge, this.talkAmp), 0.85);
     }
-    if (this.talking && g !== 'talk' && g !== 'idle' && g !== 'weep' && g !== 'kneel') {
-      this.add('shoulderL', Math.sin(this.t * 6) * 0.06, 0, 0);
+  }
+
+  applyBrows(dt) {
+    const spec = BROWS[this.emotion] || BROWS.neutral;
+    this.browLift = damp(this.browLift, spec.lift, dt, 5);
+    this.browTilt = damp(this.browTilt, spec.tilt, dt, 5);
+    if (!this.joints.browL || !this.joints.browR) return;
+    this.joints.browL.position.y = 0.31 + this.browLift;
+    this.joints.browR.position.y = 0.31 + this.browLift;
+    this.add('browL', 0, 0, this.browTilt);
+    this.add('browR', 0, 0, -this.browTilt);
+  }
+
+  applyPupils(dt) {
+    if (!this.pupilL || !this.pupilR) return;
+    this.saccT -= dt;
+    if (this.saccT <= 0) {
+      const h = hashString(`${this.id}:${Math.floor(this.t * 4)}`);
+      this.saccX = ((h % 100) / 100 - 0.5) * 0.018;
+      this.saccY = (((h >> 4) % 100) / 100 - 0.5) * 0.012;
+      this.saccT = 0.22 + (h % 8) * 0.11;
     }
+    const x = clamp(this.lookRel * 0.04 + this.saccX, -0.022, 0.022);
+    const y = clamp(this.lookPitch * 0.035 + this.saccY, -0.016, 0.016);
+    this.eyeX = damp(this.eyeX, x, dt, 16);
+    this.eyeY = damp(this.eyeY, y, dt, 16);
+    this.pupilL.position.x = this.eyeX;
+    this.pupilL.position.y = this.eyeY;
+    this.pupilR.position.x = this.eyeX * 0.92;
+    this.pupilR.position.y = this.eyeY;
   }
 
   applyPosture() {
@@ -421,11 +460,69 @@ export class Actor {
 
   applyIdle() {
     const s = Math.sin(this.t * 1.7 + this.seed);
-    this.add('spine', s * 0.025, 0, 0);
-    this.add('chest', s * 0.02, 0, 0);
-    this.add('head', Math.sin(this.t * 0.6 + this.seed) * 0.03, Math.sin(this.t * 0.37) * 0.04, 0);
+    this.add('spine', s * 0.05, 0, 0);
+    this.add('chest', s * 0.04, 0, 0);
+    this.add('head', Math.sin(this.t * 0.6 + this.seed) * 0.06, Math.sin(this.t * 0.37) * 0.08, 0);
     if (this.holdingCue) this.add('chest', Math.sin(this.t * 1.3) * 0.04, 0, 0);
   }
+}
+
+const POSES = {
+  idle: {},
+  point: { shoulderR: [1.22, -0.25, -0.15], elbowR: [0.28, 0, 0] },
+  handsOnChest: {
+    shoulderL: [0.95, 0, 0.55], elbowL: [1.25, 0, 0],
+    shoulderR: [0.95, 0, -0.55], elbowR: [1.25, 0, 0],
+  },
+  raiseArm: { shoulderR: [2.35, -0.15, -0.2], elbowR: [0.15, 0, 0] },
+  kneel: {
+    hipL: [-0.55, 0, 0], hipR: [-0.55, 0, 0],
+    kneeL: [1.55, 0, 0], kneeR: [1.55, 0, 0],
+    chest: [0.2, 0, 0], head: [0.2, 0, 0],
+  },
+  bow: { chest: [0.95, 0, 0], head: [0.4, 0, 0], shoulderL: [0.3, 0, 0], shoulderR: [0.3, 0, 0] },
+  weep: {
+    shoulderL: [1.15, 0, 0.35], elbowL: [1.45, 0, 0],
+    shoulderR: [1.15, 0, -0.35], elbowR: [1.45, 0, 0],
+    head: [0.45, 0, 0],
+  },
+  give: { shoulderR: [1.05, -0.45, -0.1], elbowR: [0.4, 0, 0] },
+  take: { shoulderR: [1.05, -0.45, -0.1], elbowR: [0.4, 0, 0] },
+  turnAway: {},
+  pace: {},
+};
+
+const BROWS = {
+  neutral: { lift: 0, tilt: 0 },
+  angry: { lift: -0.014, tilt: 0.5 },
+  sad: { lift: 0.012, tilt: -0.38 },
+  fearful: { lift: 0.022, tilt: -0.52 },
+  joyful: { lift: 0.014, tilt: -0.24 },
+  tender: { lift: 0.008, tilt: -0.12 },
+  proud: { lift: 0.006, tilt: 0.2 },
+  contemplative: { lift: 0.004, tilt: 0.26 },
+  haunted: { lift: 0.016, tilt: -0.3 },
+  uncertain: { lift: 0.01, tilt: 0.32 },
+  curious: { lift: 0.018, tilt: -0.16 },
+  emphatic: { lift: -0.008, tilt: 0.3 },
+};
+
+function poseOf(g, age, talkAmp) {
+  if (g === 'drawSword') {
+    const strike = Math.min(1, age * 1.4);
+    return { shoulderR: [0.4 + strike * 1.15, -0.35, -0.25], elbowR: [0.45, 0, 0] };
+  }
+  if (g === 'shrug') {
+    const pop = Math.sin(Math.min(Math.max(age, 0) * 5, Math.PI));
+    return { shoulderL: [0.15, 0, -0.45 * pop], shoulderR: [0.15, 0, 0.45 * pop], head: [0, 0, 0.12] };
+  }
+  if (g === 'nod') return { head: [Math.sin(age * 6) * 0.28, 0, 0] };
+  if (g === 'shakeHead') return { head: [0, Math.sin(age * 8) * 0.4, 0] };
+  if (g === 'talk') {
+    const a = talkAmp || 0;
+    return { shoulderR: [0.22 + a * 0.62, -0.12, -0.06], elbowR: [0.18 + a * 0.5, 0, 0] };
+  }
+  return POSES[g] || POSES.idle;
 }
 
 function wrap(rad) {

@@ -9,6 +9,7 @@ export const EXPERIMENT_IDS = [
   'posture',
   'audience',
   'curtains',
+  'ikTargets',
 ];
 
 function loadExperiments() {
@@ -17,10 +18,12 @@ function loadExperiments() {
     lookAt: true,
     lips: true,
     spotlight: true,
-    marks: true,
+    // Floor labels are a rehearsal overlay. Saved preferences still win.
+    marks: false,
     posture: true,
     audience: true,
     curtains: true,
+    ikTargets: false,
   };
   try {
     const raw = localStorage.getItem('ai-theater-experiments');
@@ -43,6 +46,8 @@ export const live = {
   subs: 'zh',
   lang: 'zh',
   playing: false,
+  /** Body representation for every on-stage actor. */
+  actorStyle: 'procedural',
   /** True while a live parse may still push beats. */
   streaming: false,
   /** Actors are on stage with no cue yet. */
