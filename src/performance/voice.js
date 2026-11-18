@@ -177,9 +177,15 @@ function scoreVoice(voice, pitch) {
   const name = `${voice.name || ''} ${voice.lang || ''}`.toLowerCase();
   let score = 0;
   if (/child|boy|girl/.test(name)) score += 5;
-  if (pitch < 0.85 && /female|woman|samantha|victoria|moira|fiona/.test(name)) score += 3;
-  if (pitch < 0.85 && /male|daniel|rishi|google uk english male|david/.test(name)) score -= 2;
-  if (pitch > 1.15 && /male|daniel|david|rishi/.test(name)) score += 3;
-  if (pitch > 1.15 && /female|woman|samantha|victoria/.test(name)) score -= 2;
+  const female = /female|woman|samantha|victoria|moira|fiona/.test(name);
+  const male = /\bmale\b|daniel|david|rishi/.test(name);
+  if (pitch < 0.85) {
+    if (female) score += 3;
+    else if (male) score -= 2;
+  }
+  if (pitch > 1.15) {
+    if (female) score -= 2;
+    else if (male) score += 3;
+  }
   return score;
 }

@@ -4,7 +4,7 @@ import { ACTOR_STYLES } from './actors/styles/api.js';
 import { live } from './runtime/live.js';
 
 const STYLES = ACTOR_STYLES;
-const GESTURES = ['point', 'talk', 'handsOnChest', 'bow', 'raiseArm', 'give'];
+const CYCLE = ['talk', 'point', 'handsOnChest', 'bow', 'raiseArm', 'give', 'idle', 'weep'];
 const EMOTIONS = ['angry', 'joyful', 'tender', 'sad', 'proud', 'emphatic'];
 
 const canvas = document.getElementById('stage');
@@ -65,9 +65,9 @@ for (let i = 0; i < STYLES.length; i++) {
   const x = ((STYLES.length - 1) / 2 - i) * span;
   actor.snap(x, 0.15);
   actor.yaw = 0;
-  actor.setVisible(true);
+  if (id !== 'gltf' && id !== 'vrm') actor.setVisible(true);
   actor.setEmotion(EMOTIONS[i]);
-  actor.setGesture(GESTURES[i]);
+  actor.setGesture(CYCLE[0]);
   actor.gestureBlend = 1;
   actor.setTalking(true);
   actor.look.x = x;
@@ -82,27 +82,41 @@ for (let i = 0; i < STYLES.length; i++) {
 
 Promise.all(actors.map(async (actor, i) => {
   const id = STYLES[i];
-  if (id === 'gltf' || id === 'vrm' || actor.styleId !== id) {
-    await actor.applyStyle(id);
-    actor.snap(((STYLES.length - 1) / 2 - i) * span, 0.15);
-    actor.setVisible(true);
-    actor.setGesture(GESTURES[i]);
-    actor.gestureBlend = 1;
-    actor.setTalking(true);
+  try {
+    if (id === 'gltf' || id === 'vrm' || actor.styleId !== id) {
+      await actor.applyStyle(id);
+      actor.snap(((STYLES.length - 1) / 2 - i) * span, 0.15);
+      actor.setVisible(true);
+      actor.setGesture(CYCLE[0]);
+      actor.gestureBlend = 1;
+      actor.setTalking(true);
+    }
+  } catch (error) {
+    errors.push(String(error?.message || error));
   }
-})).then(() => {
-  window.__compare.ready = actors.every((actor, i) => actor.styleId === STYLES[i]);
+})).finally(() => {
   window.__compare.stylesLive = actors.map((actor) => actor.styleId);
-}).catch((error) => {
-  errors.push(String(error?.message || error));
-  window.__compare.ready = false;
+  window.__compare.ready = actors.every((actor, i) => actor.styleId === STYLES[i]);
+  window.__compare.errors = errors;
 });
 
 let last = performance.now();
+let gestureT = 0;
+let gestureI = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  gestureT += dt;
+  if (gestureT >= 2) {
+    gestureT = 0;
+    gestureI = (gestureI + 1) % CYCLE.length;
+    const next = CYCLE[gestureI];
+    for (const actor of actors) {
+      actor.setGesture(next);
+      actor.setTalking(next === 'talk' || next === 'idle');
+    }
+  }
   for (const actor of actors) {
     if (!actor.visible) continue;
     actor.update(dt);

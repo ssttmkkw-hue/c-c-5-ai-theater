@@ -195,6 +195,14 @@ function interpretDirection(text) {
   return out;
 }
 
+function variedGesture(line, index) {
+  const text = String(line || '').trim();
+  if (/[?？]\s*$/.test(text)) return 'shrug';
+  if (/[!！]\s*$/.test(text)) return index % 2 === 0 ? 'point' : 'raiseArm';
+  if (index % 4 === 3) return 'idle';
+  return 'talk';
+}
+
 function pauseFor(line, emotion) {
   if (!line) return 200;
   if (emotion === 'contemplative') return 480;
@@ -443,7 +451,11 @@ function createScanner(options = {}, emit) {
       onStage.add(id);
       const solo = onStage.size <= 1;
       const emotion = emotionFromText(chunk, { solo });
-      let gesture = gestureFromText(chunk, { speech: true }) || gestureForEmotion(emotion, true);
+      let gesture = gestureFromText(chunk, { speech: true });
+      if (!gesture) {
+        const fromEmotion = gestureForEmotion(emotion, true);
+        gesture = fromEmotion && fromEmotion !== 'talk' ? fromEmotion : variedGesture(chunk, i);
+      }
       if (solo && emotion === 'contemplative' && !pacedSolo && i === 0) {
         gesture = 'pace';
         pacedSolo = true;
@@ -613,7 +625,7 @@ function createScanner(options = {}, emit) {
         speaker: id,
         line: chunk,
         emotion: emotionFromText(chunk, { solo: true }),
-        gesture: 'talk',
+        gesture: variedGesture(chunk, index),
         moveTo: 'cs',
         lookAt: 'audience',
         enterFrom: index === 0 ? 'left' : null,

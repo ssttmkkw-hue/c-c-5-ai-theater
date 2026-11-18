@@ -61,6 +61,16 @@ export function expandEvent(event) {
   return beat;
 }
 
+function nextBeatId(performance) {
+  if (!performance._beatSeq) {
+    let n = 0;
+    for (const scene of performance.scenes || []) n += scene.beats?.length || 0;
+    performance._beatSeq = n;
+  }
+  performance._beatSeq += 1;
+  return `b${performance._beatSeq}`;
+}
+
 function addWarning(performance, message) {
   if (!message) return;
   if (!Array.isArray(performance.warnings)) performance.warnings = [];
@@ -103,12 +113,13 @@ export function appendBeat(performance, raw) {
   } else if (expanded.sceneName && (!scene.name || scene.name === scene.id)) {
     scene.name = String(expanded.sceneName);
   }
+  if (!expanded.id) expanded.id = nextBeatId(performance);
   const draft = normalizePerformance({
     title: performance.title || 'Untitled',
     characters: performance.characters || [],
-    scenes: [{ id: scene.id, name: scene.name, beats: [...scene.beats, expanded] }],
+    scenes: [{ id: scene.id, name: scene.name, beats: [expanded] }],
   });
-  const beat = draft.scenes[0]?.beats?.at(-1);
+  const beat = draft.scenes[0]?.beats?.[0];
   if (!beat) return null;
   scene.beats.push(beat);
   for (const w of draft.warnings || []) {

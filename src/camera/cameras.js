@@ -85,10 +85,12 @@ export class CameraRig {
     let oy = 0;
     let oz = 0;
     if (this.mode === 'audience') {
-      ox = Math.sin(this.t * 0.31) * 0.018 + Math.sin(this.t * 0.13) * 0.007;
-      oy = Math.sin(this.t * 0.53) * 0.01;
-      oz = Math.sin(this.t * 0.23) * 0.012;
+      ox = Math.sin(this.t * 0.31) * 0.04 + Math.sin(this.t * 0.13) * 0.018;
+      oy = Math.sin(this.t * 0.53) * 0.028;
+      oz = Math.sin(this.t * 0.23) * 0.035;
       if (live.soliloquy) oz += 0.22;
+      const speakX = live.speakerId ? (live.speakerHead?.x || 0) : 0;
+      this.desiredLook.x = AUDIENCE_CAM.look[0] + speakX * 0.15;
     }
     this.camera.position.x = damp(this.camera.position.x, this.desiredPos.x + ox, dt, k);
     this.camera.position.y = damp(this.camera.position.y, this.desiredPos.y + oy, dt, k);
