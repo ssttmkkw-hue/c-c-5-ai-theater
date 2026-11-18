@@ -7,7 +7,9 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseScript } from '../src/parse/ruleParser.js';
+import { parseScript, streamScript } from '../src/parse/ruleParser.js';
+import { looksLikePremise, streamPremise } from '../src/parse/premise.js';
+import { appendBeat, eventsToPerformance, ndjsonToEvents, performanceToEvents } from '../src/performance/stream.js';
 import { samples } from '../src/data/samples.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -55,8 +57,32 @@ const prompt = readFileSync(resolve(here, 'prompt-performance.md'), 'utf8');
 expect(prompt.includes('{{SCRIPT}}'), 'prompt template should have a script marker');
 expect(prompt.includes('"version": 1'), 'prompt template should document version 1');
 
+function beatKey(performance) {
+  return performance.scenes.flatMap((scene) => scene.beats.map((b) => [b.speaker, b.kind, b.line, b.emotion, b.gesture, b.moveTo, b.enterFrom, b.exitTo].join('|')));
+}
+
+const t0 = performance.now();
+let firstAt = 0;
+const streamed = await streamScript(samples['hamlet-a3s1'].script, (ev) => {
+  if (!firstAt && ev.type === 'beat') firstAt = performance.now() - t0;
+}, { title: samples['hamlet-a3s1'].title, source: samples['hamlet-a3s1'].source });
+expect(firstAt > 0 && firstAt < 800, `hamlet first beat event should be fast, was ${firstAt.toFixed(1)}ms`);
+expect(beatKey(hamlet).join('\n') === beatKey(streamed).join('\n'), 'streamed hamlet should match the full parse');
+
+expect(looksLikePremise('两个朋友在雨里吵架'), 'a one-line premise should be recognized');
+expect(!looksLikePremise(samples.demo.script), 'a cued script is not a premise');
+const sketch = await streamPremise('两个朋友在雨里吵架', () => {});
+expect(sketch.warnings.includes('local-sketch'), 'premise sketch should label itself');
+expect(sketch.scenes[0].beats.some((b) => b.line.includes('两个朋友在雨里吵架')), 'premise should be woven into a line');
+
+const round = eventsToPerformance(ndjsonToEvents(performanceToEvents(sketch).map((ev) => JSON.stringify(ev)).join('\n')));
+expect(round.scenes[0].beats[0].line === sketch.scenes[0].beats[0].line, 'ndjson roundtrip should keep the first line');
+const aliased = { version: 1, title: 'T', characters: [{ id: 'ann', name: 'Ann' }], scenes: [{ id: 's', name: 'S', beats: [] }], warnings: [] };
+appendBeat(aliased, { sid: 's', sp: 'ann', ln: 'Hello there.', em: 'joyful' });
+expect(aliased.scenes[0].beats[0].speaker === 'ann' && aliased.scenes[0].beats[0].line === 'Hello there.', 'short beat aliases should append');
+
 if (failures.length) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log(`smoke-parse ok — hamlet beats ${hamlet.scenes.reduce((n, s) => n + s.beats.length, 0)}, characters ${[...ids].join(', ')}`);
+console.log(`smoke-parse ok — hamlet beats ${hamlet.scenes.reduce((n, s) => n + s.beats.length, 0)}, characters ${[...ids].join(', ')}, firstBeat ${firstAt.toFixed(1)}ms`);
