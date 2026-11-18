@@ -215,9 +215,9 @@ The transport under the subtitle can step one beat, stop, or restart. The speed 
 
 ## Experiments / 试验
 
-Each switch is stored in `localStorage` under `ai-theater-experiments`. All of them start on.
+Each switch is stored in `localStorage` under `ai-theater-experiments`. They start on, except **Blocking marks** and **IK targets**, which start off. A saved choice still wins.
 
-每个开关都存在 `localStorage` 的 `ai-theater-experiments` 里。默认全开。
+每个开关都存在 `localStorage` 的 `ai-theater-experiments` 里。默认开着，但**舞台标记**和 **IK 目标点**默认关。已经存过的选择仍然有效。
 
 | Id | What you should see / 你会看到 |
 | --- | --- |
@@ -225,10 +225,34 @@ Each switch is stored in `localStorage` under `ai-theater-experiments`. All of t
 | `lookAt` | Heads turn toward the person being addressed, with a small lag. / 头转向受话的人，带一点滞后。 |
 | `lips` | Jaw and mouth while a line is spoken. / 说话时的下颌和嘴。 |
 | `spotlight` | The follow spot leans toward the speaker. / 追光偏向正在说话的人。 |
-| `marks` | Stage marks (`CS`, `DL`, `DR`, …) on the floor. / 台面上的走位标记。 |
+| `marks` | Stage marks (`CS`, `DL`, `DR`, …) on the floor. Off until you turn it on. / 台面上的走位标记。要打开才看得到。 |
 | `posture` | A posture stacked on top of the gesture for the beat's emotion. / 在手势之上，按情绪加上的体态。 |
 | `audience` | The house fidgets, leans in on a soliloquy, and claps between scenes. Your own seat stays either way. / 观众席会晃、独白时探身，换场时鼓掌。你自己的座位一直在。 |
 | `curtains` | The red curtain closes when the show is stopped and opens when it plays. Off, the curtain stays open. / 停止时合上红幕，演出时拉开。关掉则幕一直开着。 |
+| `ikTargets` | Pink spheres on the IK hand targets. Only matters while the actor style is IK. Off by default. / IK 手的目标点。只有演员样式是 IK 时才有用。默认关。 |
+
+## Actor styles / 演员样式
+
+The **Actor style / 演员样式** menu swaps every on-stage body without reloading the page. The choice is kept in `localStorage` (`ai-theater-actor-style`). The same hooks are `window.__theater.setActorStyle(id)`, `getActorStyle()`, and `listActorStyles()`. `getState().actorStyle` is the current id.
+
+**演员样式**菜单会换掉台上所有人的身体，不用整页刷新。选择记在 `localStorage`（`ai-theater-actor-style`）。同样的钩子是 `window.__theater.setActorStyle(id)`、`getActorStyle()`、`listActorStyles()`。`getState().actorStyle` 是当前的 id。
+
+| Id | What it is / 是什么 |
+| --- | --- |
+| `procedural` | The jointed mannequin. Gestures crossfade, and the face has brows and pupils. Default. / 关节人偶。手势交叉淡入，脸上有眉毛和瞳孔。默认。 |
+| `gltf` | Original CC0 skinned figure and clips. Loaded when selected. / 原创 CC0 蒙皮人和片段。选中才加载。 |
+| `vrm` | Original CC0 VRM, loaded with `@pixiv/three-vrm@2.1.0` from esm.sh only when selected. / 原创 CC0 VRM。只有选中时才从 esm.sh 加载 `@pixiv/three-vrm@2.1.0`。 |
+| `paper` | Canvas paper puppet. Original drawings. / 画布纸偶。图是现画的。 |
+| `toon` | Same joints, cel shading and an outline. / 同一套关节，分色和轮廓。 |
+| `ik` | Same joints, with two-bone arms reaching the gesture. / 同一套关节，双骨手臂伸向手势目标。 |
+
+[compare.html](compare.html) (also `#compare` on the main page) stands all six in a row. Notes, licenses, and what was searched and left out: [docs/ACTOR_MODELS.md](docs/ACTOR_MODELS.md).
+
+[compare.html](compare.html)（主页的 `#compare` 也会打开它）把六种样式排成一排。说明、许可证，以及查过但没放进来的素材：[docs/ACTOR_MODELS.md](docs/ACTOR_MODELS.md)。
+
+A one-line premise is still labeled in the status row as a local sketch. The actors do not say that they are a sketch.
+
+一句话剧情仍然在状态行标明是本地草稿。演员不会把「我们是草稿」说出来。
 
 ## Project structure / 目录
 
@@ -239,7 +263,9 @@ src/main.js             boot, frame loop, window.__theater
 src/parse/              rule parser, AI placeholder, presets, lexicon
 src/performance/        Performance JSON, director, speech timing
 src/stage/              set, marks, curtains, lights
-src/actors/             rig, cast, audience
+src/actors/             rig, cast, audience, styles (paper, glTF, VRM, toon, IK)
+compare.html            side-by-side actor styles
+assets/actors/          original CC0 glTF and VRM, plus LICENSE notes
 src/camera/cameras.js   audience, cinematic, free
 src/ui/                 panel and strings
 src/data/               samples, subtitle glosses, curated JSON
@@ -253,9 +279,9 @@ tools/parse-with-claude.mjs
 tools/smoke-parse.mjs
 ```
 
-`window.__theater` exposes `load`, `play`, `pause`, `pasteAndPlay`, `setMuted`, `setCamera`, `setExperiment`, `getState`, `waitIdle`, `parseStream`, `liveStart`, `intervene`, `pushEvent`, and `pushBeat` for a local smoke test. It is not a supported public API.
+`window.__theater` exposes `load`, `play`, `pause`, `pasteAndPlay`, `setMuted`, `setCamera`, `setExperiment`, `setActorStyle`, `getActorStyle`, `listActorStyles`, `getState`, `waitIdle`, `parseStream`, `liveStart`, `intervene`, `pushEvent`, and `pushBeat` for a local smoke test. It is not a supported public API.
 
-`window.__theater` 提供 `load`、`play`、`pause`、`pasteAndPlay`、`setMuted`、`setCamera`、`setExperiment`、`getState`、`waitIdle`、`parseStream`、`liveStart`、`intervene`、`pushEvent`、`pushBeat`，给本地冒烟测试用。这不是对外承诺的 API。
+`window.__theater` 提供 `load`、`play`、`pause`、`pasteAndPlay`、`setMuted`、`setCamera`、`setExperiment`、`setActorStyle`、`getActorStyle`、`listActorStyles`、`getState`、`waitIdle`、`parseStream`、`liveStart`、`intervene`、`pushEvent`、`pushBeat`，给本地冒烟测试用。这不是对外承诺的 API。
 
 `tools/smoke-parse.mjs` checks the rule parser in Node, with no browser and no network. `tools/parse-with-claude.mjs` fills `tools/prompt-performance.md` and prints the prompt. It does **not** call `claude` unless you pass `--invoke` yourself, on a machine where that CLI is already installed. The page never runs it and never sees an API key.
 
@@ -299,7 +325,7 @@ Not in this version, and not promised as a schedule:
 
 - A real streaming dramaturg on the `ending` / `pushBeat` seam. The button and the hook are there; the model is not.
 - 在 `ending` / `pushBeat` 这条缝上接一个真正会流式写戏的编剧。按钮和钩子在，模型不在。
-- More actor styles than the eight costumes.
-- 比现在八套服装更多的演员样式。
+- More costumes than the eight already on the procedural body.
+- 比程序人偶上已有的八套服装再多一些。
 - A real server-side parser, if one is ever added, would keep the key off the page and return the same Performance JSON. v1 does not include that server.
 - 若以后真的加上服务器端解析，密钥会留在服务器上，返回的仍是同一份 Performance JSON。第一版不包含那台服务器。

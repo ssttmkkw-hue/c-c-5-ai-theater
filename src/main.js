@@ -10,7 +10,10 @@ import { normalizePerformance, performanceToJson } from './performance/schema.js
 import { applyTranslations, samples } from './data/samples.js';
 import { curatedHamlet } from './data/curated.js';
 import { EXPERIMENT_IDS, live, persistExperiments } from './runtime/live.js';
+import { bindCast, getActorStyle, listActorStyles, loadSavedStyle, setActorStyle } from './actors/styles/api.js';
 import { mountUI } from './ui/panel.js';
+
+if (location.hash === '#compare') location.replace('./compare.html');
 
 const canvas = document.getElementById('stage');
 const renderer = new THREE.WebGLRenderer({
@@ -35,6 +38,8 @@ const camera = new THREE.PerspectiveCamera(40, 1, 0.08, 80);
 const cameras = new CameraRig(camera, canvas);
 const theater = createTheater(scene);
 const cast = new Cast(scene);
+bindCast(cast);
+loadSavedStyle();
 const audience = createAudience(scene);
 const provider = new ParserProvider();
 
@@ -93,6 +98,7 @@ ui = mountUI({
   setSubs,
   setCamera,
   setExperiment,
+  setActorStyle: (id) => setActorStyle(id),
   downloadJson,
   prevBeat: () => director.prevBeat(),
   nextBeat: () => director.nextBeat(),
@@ -409,8 +415,10 @@ function getState() {
       visible: Boolean(actor.visible),
       emotion: actor.emotion,
       gesture: actor.gesture,
+      style: actor.styleId,
     })),
     experiments: { ...live.experiments },
+    actorStyle: getActorStyle(),
     lang: live.lang,
     title: director.performance?.title || '',
     parseWarnings: [...lastWarnings],
@@ -440,6 +448,9 @@ const theaterApi = {
   setLang,
   setExperiment,
   listExperiments: () => [...EXPERIMENT_IDS],
+  setActorStyle,
+  getActorStyle,
+  listActorStyles,
   pasteAndPlay: async (text) => {
     await liveStart(text);
     return director.performance;

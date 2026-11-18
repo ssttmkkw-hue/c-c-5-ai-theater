@@ -71,6 +71,17 @@ export function mountUI(api) {
         <button type="button" id="sit-btn"></button>
       </div>
     </div>
+    <label class="field"><span data-i18n="actorStyle"></span>
+      <select id="actor-style">
+        <option value="procedural"></option>
+        <option value="gltf"></option>
+        <option value="vrm"></option>
+        <option value="paper"></option>
+        <option value="toon"></option>
+        <option value="ik"></option>
+      </select>
+    </label>
+    <p class="hint"><a id="compare-link" href="./compare.html"></a></p>
     <fieldset class="experiments">
       <legend data-i18n="experiments"></legend>
       <div id="exp-list"></div>
@@ -139,6 +150,7 @@ export function mountUI(api) {
     btn.addEventListener('click', () => api.setCamera(btn.dataset.cam));
   });
   q('#sit-btn').addEventListener('click', () => api.setCamera('audience'));
+  q('#actor-style').addEventListener('change', (e) => api.setActorStyle(e.target.value));
   expList.addEventListener('change', (e) => {
     const input = e.target.closest('[data-exp]');
     if (!input) return;
@@ -216,6 +228,20 @@ export function mountUI(api) {
       const el = panel.querySelector(`[data-exp-label="${id}"]`);
       if (el) el.textContent = t(L, EXP_KEYS[id]);
     }
+    const styles = {
+      procedural: 'styleProcedural',
+      gltf: 'styleGltf',
+      vrm: 'styleVrm',
+      paper: 'stylePaper',
+      toon: 'styleToon',
+      ik: 'styleIk',
+    };
+    for (const [value, key] of Object.entries(styles)) {
+      const opt = panel.querySelector(`#actor-style option[value="${value}"]`);
+      if (opt) opt.textContent = t(L, key);
+    }
+    const compare = panel.querySelector('#compare-link');
+    if (compare) compare.textContent = t(L, 'compareStyles');
     const cams = { audience: 'camAudience', cinematic: 'camCinematic', free: 'camFree' };
     panel.querySelectorAll('[data-cam]').forEach((btn) => {
       btn.textContent = t(L, cams[btn.dataset.cam]);
@@ -274,6 +300,8 @@ export function mountUI(api) {
       const input = panel.querySelector(`[data-exp="${id}"]`);
       if (input) input.checked = Boolean(state.experiments[id]);
     }
+    const styleSelect = q('#actor-style');
+    if (styleSelect && styleSelect.value !== state.actorStyle) styleSelect.value = state.actorStyle || 'procedural';
     tab.textContent = panel.classList.contains('collapsed') ? (L === 'zh' ? '剧本' : 'Script') : (L === 'zh' ? '收起' : 'Hide');
     const title = document.getElementById('show-title');
     if (title) title.textContent = state.title || '';
