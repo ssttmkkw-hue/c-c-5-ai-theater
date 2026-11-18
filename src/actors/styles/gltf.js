@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { clamp } from '../../util/math.js';
 import { retargetClip } from './retarget.js';
+import { attachBlockFace } from './face.js';
 
 const URL = 'assets/actors/gltf/theater-figure.gltf';
 let pending = null;
@@ -66,8 +67,10 @@ export async function createGltfBody(character) {
     action.setEffectiveWeight(src.name === 'idle' ? 1 : 0);
     actions[src.name] = action;
   }
+  const headBone = model.getObjectByName('head');
+  const face = attachBlockFace(headBone, character.skin || '#e0b394');
   const driver = {
-    head: model.getObjectByName('head'),
+    head: headBone,
     current: 'idle',
     _nudged: [],
     update(actor, dt) {
@@ -103,9 +106,9 @@ export async function createGltfBody(character) {
     root: model,
     joints: {},
     sword: null,
-    lidL: null,
-    lidR: null,
-    mouth: null,
+    lidL: face.lidL,
+    lidR: face.lidR,
+    mouth: face.mouth,
     pupilL: null,
     pupilR: null,
     styleId: 'gltf',

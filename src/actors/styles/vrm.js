@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { clamp } from '../../util/math.js';
+import { attachBlockFace } from './face.js';
 
 const URL = 'assets/actors/vrm/theater-cc0.vrm';
 const VRM_CDN = 'https://esm.sh/@pixiv/three-vrm@2.1.0?external=three';
 const CC0 = 'https://creativecommons.org/publicdomain/zero/1.0/';
 let modulesPromise = null;
+let filePromise = null;
 const _look = new THREE.Vector3();
 
 const EXPRESS = ['happy', 'angry', 'sad', 'relaxed', 'surprised', 'aa', 'blink'];
@@ -19,8 +21,22 @@ function loadModules() {
   return modulesPromise;
 }
 
+function loadFile() {
+  if (!filePromise) {
+    filePromise = fetch(URL).then((res) => {
+      if (!res.ok) throw new Error(`vrm ${res.status}`);
+      return res.arrayBuffer();
+    }).catch((error) => {
+      filePromise = null;
+      throw error;
+    });
+  }
+  return filePromise;
+}
+
 async function loadVrm() {
   const [{ GLTFLoader }, vrmMod] = await loadModules();
+  const bytes = await loadFile();
   const loader = new GLTFLoader();
   loader.register((parser) => new vrmMod.VRMLoaderPlugin(parser, {
     autoUpdateHumanBones: true,
@@ -29,9 +45,9 @@ async function loadVrm() {
       acceptLicenseUrls: ['https://vrm.dev/licenses/1.0/', CC0],
     }),
   }));
-  const gltf = await loader.loadAsync(URL);
+  const gltf = await loader.parseAsync(bytes.slice(0), URL);
   if (!gltf.userData.vrm) throw new Error('VRM loader did not attach userData.vrm');
-  return gltf.userData.vrm;
+  return { vrm: gltf.userData.vrm, vrmMod };
 }
 
 function emotionWeights(emotion) {
@@ -62,11 +78,12 @@ function setBone(vrm, name, x, y, z) {
  * only after the VRM style is selected. Gestures that have no pose become a relaxed idle.
  */
 export async function createVrmBody(character) {
-  const vrm = await loadVrm();
+  const { vrm, vrmMod } = await loadVrm();
   const model = vrm.scene;
   model.name = `vrm-${character.id || 'x'}`;
   const cloth = new THREE.Color(character.color || '#c5cad6');
   model.traverse((obj) => {
+    if (obj.geometry) obj.geometry.userData.owned = true;
     if (obj.isMesh || obj.isSkinnedMesh) obj.frustumCulled = false;
     if (!obj.isMesh || !obj.material) return;
     const list = Array.isArray(obj.material) ? obj.material : [obj.material];
@@ -88,53 +105,75 @@ export async function createVrmBody(character) {
   root.add(look);
   if (vrm.lookAt) vrm.lookAt.target = look;
 
+  const headBone = vrm.humanoid?.getNormalizedBoneNode('head') || model.getObjectByName('head');
+  const face = attachBlockFace(headBone, character.skin || '#e0b394');
+  const pose = {};
   const driver = {
-    head: vrm.humanoid?.getNormalizedBoneNode('head') || model.getObjectByName('head'),
+    head: headBone,
     update(actor, dt) {
       const g = actor.gesture;
       const b = actor.gestureBlend ?? 1;
       const armDownL = 0.55;
       const armDownR = -0.55;
-      setBone(vrm, 'leftUpperArm', 0, 0, armDownL);
-      setBone(vrm, 'rightUpperArm', 0, 0, armDownR);
-      setBone(vrm, 'leftLowerArm', 0.15, 0, 0);
-      setBone(vrm, 'rightLowerArm', 0.15, 0, 0);
+      const goal = {
+        leftUpperArm: [0, 0, armDownL],
+        rightUpperArm: [0, 0, armDownR],
+        leftLowerArm: [0.15, 0, 0],
+        rightLowerArm: [0.15, 0, 0],
+        spine: [Math.sin(actor.t * 1.4) * 0.04, 0, 0],
+        chest: [0, 0, 0],
+        leftUpperLeg: [0, 0, 0],
+        rightUpperLeg: [0, 0, 0],
+        leftLowerLeg: [0, 0, 0],
+        rightLowerLeg: [0, 0, 0],
+      };
       if (g === 'point' || g === 'give' || g === 'take') {
-        setBone(vrm, 'rightUpperArm', -0.4 * b, 0, armDownR * (1 - b) + -0.2 * b);
-        setBone(vrm, 'rightLowerArm', 0.35 * b, 0, 0);
+        goal.rightUpperArm = [-0.4 * b, 0, armDownR * (1 - b) + -0.2 * b];
+        goal.rightLowerArm = [0.35 * b, 0, 0];
       } else if (g === 'raiseArm') {
-        setBone(vrm, 'rightUpperArm', 0, 0, -0.15 * b);
+        goal.rightUpperArm = [0, 0, -0.15 * b];
       } else if (g === 'handsOnChest' || g === 'weep') {
-        setBone(vrm, 'leftUpperArm', -0.6 * b, 0, 0.4 * b);
-        setBone(vrm, 'rightUpperArm', -0.6 * b, 0, -0.4 * b);
-        setBone(vrm, 'leftLowerArm', 1.1 * b, 0, 0);
-        setBone(vrm, 'rightLowerArm', 1.1 * b, 0, 0);
+        goal.leftUpperArm = [-0.6 * b, 0, 0.4 * b];
+        goal.rightUpperArm = [-0.6 * b, 0, -0.4 * b];
+        goal.leftLowerArm = [1.1 * b, 0, 0];
+        goal.rightLowerArm = [1.1 * b, 0, 0];
       } else if (g === 'bow') {
-        setBone(vrm, 'spine', 0.45 * b, 0, 0);
-        setBone(vrm, 'chest', 0.25 * b, 0, 0);
+        goal.spine = [0.45 * b, 0, 0];
+        goal.chest = [0.25 * b, 0, 0];
+      } else if (g === 'listen') {
+        goal.spine = [0.08 * b, 0, 0];
       } else if (g === 'kneel') {
-        setBone(vrm, 'leftUpperLeg', -1.1 * b, 0, 0);
-        setBone(vrm, 'rightUpperLeg', -1.1 * b, 0, 0);
-        setBone(vrm, 'leftLowerLeg', 1.3 * b, 0, 0);
-        setBone(vrm, 'rightLowerLeg', 1.3 * b, 0, 0);
+        goal.leftUpperLeg = [-1.1 * b, 0, 0];
+        goal.rightUpperLeg = [-1.1 * b, 0, 0];
+        goal.leftLowerLeg = [1.3 * b, 0, 0];
+        goal.rightLowerLeg = [1.3 * b, 0, 0];
       } else if ((g === 'talk' || g === 'idle') && actor.talking) {
         const amp = actor.talkAmp || 0.3;
-        setBone(vrm, 'rightUpperArm', -0.45 * amp, 0, armDownR * 0.45);
-        setBone(vrm, 'rightLowerArm', 0.4 * amp, 0, 0);
+        goal.rightUpperArm = [-0.45 * amp, 0, armDownR * 0.45];
+        goal.rightLowerArm = [0.4 * amp, 0, 0];
       }
       if (actor.walking) {
         const s = Math.sin(actor.walkPhase || 0);
-        setBone(vrm, 'leftUpperLeg', s * 0.6, 0, 0);
-        setBone(vrm, 'rightUpperLeg', -s * 0.6, 0, 0);
-        setBone(vrm, 'leftLowerLeg', Math.max(0, -s) * 0.8, 0, 0);
-        setBone(vrm, 'rightLowerLeg', Math.max(0, s) * 0.8, 0, 0);
-      } else {
-        setBone(vrm, 'spine', Math.sin(actor.t * 1.4) * 0.04 + (g === 'bow' ? 0.45 * b : 0), 0, 0);
+        goal.leftUpperLeg = [s * 0.6, 0, 0];
+        goal.rightUpperLeg = [-s * 0.6, 0, 0];
+        goal.leftLowerLeg = [Math.max(0, -s) * 0.8, 0, 0];
+        goal.rightLowerLeg = [Math.max(0, s) * 0.8, 0, 0];
+        goal.spine = [0, 0, 0];
       }
-      const head = vrm.humanoid?.getNormalizedBoneNode('head');
-      if (head) {
-        head.rotation.y = clamp((actor.lookRel || 0) * 0.8 + (actor.glanceV || 0) * 0.4, -0.7, 0.7);
-        head.rotation.x = clamp(-(actor.lookPitch || 0) * 0.5, -0.35, 0.3);
+      let headX = clamp(-(actor.lookPitch || 0) * 0.5, -0.35, 0.3);
+      const headY = clamp((actor.lookRel || 0) * 0.8 + (actor.glanceV || 0) * 0.4, -0.7, 0.7);
+      if (g === 'listen') {
+        const cycle = (actor.gestureAge || 0) % 4.4;
+        if (cycle > 3.15) headX -= Math.sin(((cycle - 3.15) / 1.15) * Math.PI) * 0.2;
+      }
+      goal.head = [headX, headY, 0];
+      const k = 1 - Math.exp(-Math.max(0.001, dt) * 8);
+      for (const [name, euler] of Object.entries(goal)) {
+        const cur = pose[name] || (pose[name] = euler.slice());
+        cur[0] += (euler[0] - cur[0]) * k;
+        cur[1] += (euler[1] - cur[1]) * k;
+        cur[2] += (euler[2] - cur[2]) * k;
+        setBone(vrm, name, cur[0], cur[1], cur[2]);
       }
       const mgr = vrm.expressionManager;
       if (mgr) {
@@ -154,16 +193,22 @@ export async function createVrmBody(character) {
       look.position.copy(_look);
       vrm.update(dt);
     },
-    dispose() {},
+    dispose() {
+      try {
+        vrmMod.VRMUtils?.deepDispose?.(vrm.scene);
+      } catch {
+        /* geometry may already be released */
+      }
+    },
   };
 
   return {
     root,
     joints: {},
     sword: null,
-    lidL: null,
-    lidR: null,
-    mouth: null,
+    lidL: face.lidL,
+    lidR: face.lidR,
+    mouth: face.mouth,
     pupilL: null,
     pupilR: null,
     styleId: 'vrm',
