@@ -1,19 +1,223 @@
 # AI Theater / 演戏
 
-An experimental project: paste a play script, watch it performed on a 3D stage.
+An experiment: paste a play, and a small company of procedural actors performs it on a 3D stage. You sit in the house — there is a figure in the front row marked 你 / YOU — and watch. v1 is a local, offline toy. The gestures are still stiff, and the animation is meant to keep changing.
 
-一个尝试性项目：粘贴一段剧本，在三维舞台上看演员把它演出来。
+一个试验：把剧本贴进去，几个程序生成的演员在三维小剧场里把它演出来。你坐在台下，前排有一个标着「你」的小人。第一版只在本地、离线运行。动作还生硬，动画会继续改。
 
-This repo is just getting started. Playable v1 will land shortly.
+This is not affiliated with any theatre, publisher, or model vendor. The Shakespeare excerpts are public domain. The Chinese subtitle lines shipped with those excerpts are plain renderings written for this project, not a published translation.
 
-本仓库刚创建，可玩的第一版很快会提交上来。
+本项目与任何剧院、出版社或模型厂商都没有从属关系。《哈姆雷特》选段为公有领域。随选段附上的中文字幕是为本项目写的白话转述，不是已出版译本。
+
+There is no live AI backend in this version. Choosing “AI parser” in the panel falls back to the rule parser and says so.
+
+这一版没有在线的 AI 后端。面板里选「AI 解析」时，会退回规则解析，并在解析记录里说明。
 
 ## Run / 运行
+
+From the repository root, serve the files over HTTP. ES modules do not run from a `file://` URL.
+
+在仓库根目录用 HTTP 把文件提供出来。ES module 不能用 `file://` 打开。
 
 ```bash
 python3 -m http.server 8877
 ```
 
-Then open `http://localhost:8877`.
+Open `http://localhost:8877`. Port 8877 is the one this project uses; leave 5173, 8765, and 8000 alone if something else is already bound there.
 
-然后打开 `http://localhost:8877`。
+然后打开 `http://localhost:8877`。本项目用 8877。若本机已占用 5173、8765 或 8000，不要去抢那些端口。
+
+The first visit opens a short note. Dismiss it with the button or Esc. The choice is remembered in `localStorage`.
+
+第一次打开会有一段说明。用按钮或 Esc 关掉。这个选择记在 `localStorage` 里。
+
+## Paste a script / 粘贴剧本
+
+1. Paste text into the script box, or pick a sample and press **Load and play / 载入并演出**.
+2. **Parse / 解析** turns the text into Performance JSON and shows it under the disclosure, including warnings.
+3. **Play / 演出** parses if nothing is loaded yet, then starts the show. Space does the same when focus is not in a field. Space again pauses.
+4. You can also paste a Performance JSON object. If it has `scenes` or a top-level `beats` array, it is staged directly. A broken `{...` falls back to the rule parser and records `json-invalid`.
+5. **Download JSON / 下载 JSON** saves the current performance. **Import / 导入** reads a JSON file back in.
+
+1. 把文本贴进剧本框，或选一个示例再按 **载入并演出**。
+2. **解析** 会把它变成 Performance JSON，并在折叠栏里连同警告一起显示。
+3. **演出** 在还没有装入内容时先解析，然后开演。焦点不在输入框里时，空格也是开演或暂停。
+4. 也可以直接贴 Performance JSON。只要有 `scenes`，或顶层有 `beats` 数组，就会按演出数据上台。看起来像 JSON 但解析失败时，会按剧本来读，并记下 `json-invalid`。
+5. **下载 JSON** 保存当前演出。**导入** 把 JSON 文件读回来。
+
+A minimal two-hander the rule parser understands:
+
+规则解析器能认出的最短双人剧：
+
+```text
+Enter ALICE.
+
+ALICE.
+The lantern is lit.
+
+Enter BOB.
+
+BOB.
+Then we cross the yard.
+```
+
+Speaker cues look like `HAMLET.` or `Ophelia:`. Stage directions can sit on their own line in parentheses, brackets, `_underscores_`, or `*asterisks*`.
+
+角色提示写成 `HAMLET.` 或 `Ophelia:`。舞台指示可以单独成行，用圆括号、方括号、`_下划线_` 或 `*星号*`。
+
+## Performance JSON / 演出数据
+
+Version 1. The normalizer fills defaults and never throws on a messy object; unknown values become warnings and a safe fallback. Mark coordinates are meters: `x` stage right, `y` up from the stage floor, `z` upstage. The runtime stands actors on the raised stage. `"audience"` is not a point; the director aims it at a seat in the house.
+
+第一版。规范化会补上缺省值，不会因为一份乱的对象抛错；不认识的值变成警告，并退回一个安全的默认。标记坐标单位是米：`x` 向舞台右侧，`y` 从台面向上，`z` 向上场。运行时会把演员放到升高的台面上。`"audience"` 不是一个点，导演会把它对准观众席里的一个座位。
+
+| Field | Meaning / 含义 |
+| --- | --- |
+| `version` | Always `1`. / 固定为 `1`。 |
+| `title` | Show title on the proscenium sign. / 台口匾上的剧名。 |
+| `source` | Credit line. Shakespeare samples use a public-domain credit. / 出处。莎士比亚示例标明公有领域。 |
+| `locale` | `"en"` or `"zh"`. / `"en"` 或 `"zh"`。 |
+| `note` | Optional free text. / 可选的一句说明。 |
+| `characters[]` | `id`, `name`, `aliases[]`, `color` (`#rgb` or `#rrggbb`), `costume`, `skin`, `hair`, `voice`. |
+| `voice` | `lang` (BCP-47, default `en-GB`), `pitch` (0.3–2), `rate` (0.6–1.6). Used only if speech is on. / 仅在朗读打开时使用。 |
+| `costume` | `prince`, `maiden`, `king`, `queen`, `ghost`, `courtier`, `traveler`, `visitor`. Anything else becomes `courtier` and warns. / 其他值会变成 `courtier` 并警告。 |
+| `marks` | `cs`, `dl`, `dr`, `ul`, `ur`, `sl`, `sr` as `[x, y, z]`, plus `audience: "audience"`. |
+| `scenes[]` | `id`, `name`, `beats[]`. |
+| `beats[]` | One breath, entrance, exit, or hold. See below. / 一口台词、一次上下场，或一次停顿。见下。 |
+| `warnings` | Strings collected by the parser or the normalizer. / 解析器或规范化记下的字符串。 |
+
+Beat fields / 拍的字段:
+
+| Field | Meaning / 含义 |
+| --- | --- |
+| `id` | Stable id. Default `b1`, `b2`, … / 缺省为 `b1`、`b2`…… |
+| `kind` | `speech`, `action`, or `pause`. Inferred when omitted. / 缺省时按有没有台词来推断。 |
+| `speaker` | Character `id`, or `null` for a silent beat. / 角色 `id`，纯停顿则为 `null`。 |
+| `line` | Spoken text. Empty for an entrance, exit, or pause. / 台词。上下场或停顿可以为空。 |
+| `lineZh` | Optional subtitle gloss. Bundled samples fill this from `src/data/translations.js` when the English line matches. / 可选中文字幕。内置示例在英文对得上时由翻译表填上。 |
+| `emotion` | `neutral`, `contemplative`, `curious`, `uncertain`, `emphatic`, `angry`, `sad`, `tender`, `fearful`, `proud`, `haunted`, `joyful`. |
+| `gesture` | `idle`, `talk`, `point`, `handsOnChest`, `raiseArm`, `kneel`, `turnAway`, `pace`, `bow`, `weep`, `give`, `take`, `drawSword`, `shrug`, `nod`, `shakeHead`. |
+| `moveTo` | A mark id, or `null` to stay. / 标记 id，或 `null` 表示留在原地。 |
+| `lookAt` | `audience`, `aside`, a character id, a mark id, or `null`. |
+| `enterFrom` | `left`, `right`, or `null`. Used when the actor is still offstage. / 演员还在侧幕时从哪边上。 |
+| `exitTo` | `left`, `right`, or `null`. |
+| `pauseMs` | Hold after the line, or the whole beat when the line is empty. Clamped to 0–8000. / 台词之后的停顿；没有台词时就是这一拍的长度。限制在 0–8000。 |
+
+`src/data/curated.js` is a hand-authored example of this object. It is not the output of a model.
+
+`src/data/curated.js` 是手写的一份示例，不是模型的输出。
+
+## Bundled samples / 内置示例
+
+| Id | What it is / 内容 |
+| --- | --- |
+| `hamlet-a3s1` | *Hamlet* Act 3, Scene 1, from the soliloquy through the nunnery. Public-domain English, parsed by the rules. / 《哈姆雷特》第三幕第一场，从独白到修道院。公有领域英文，由规则解析。 |
+| `hamlet-a1s5` | *Hamlet* Act 1, Scene 5, Hamlet and the Ghost. / 第一幕第五场，哈姆雷特与鬼魂。 |
+| `demo` | *The Courtyard*, a short original two-hander written for this project. / 《院子》，为本项目写的原创短剧。 |
+| `hamlet-a3s1-curated` | The same opening beats as 3.1, with blocking written by hand in Performance JSON. / 同样的 3.1 开头，走位是手写在 JSON 里的。 |
+
+## Camera and controls / 机位与操作
+
+| Input / 操作 | Result / 结果 |
+| --- | --- |
+| `1` or **Audience / 观众席** | A seat in the house, behind the front row. / 观众席，在前排后面。 |
+| `2` or **Cinematic / 镜头** | A wider and closer series of shots that shifts on each beat. / 稍远或稍近的镜头，每一拍会换。 |
+| `3` or **Free / 自由** | Orbit the stage, or move with WASD / arrows. `Q` and `E` (or Page Down / Page Up) change height. Shift moves faster. / 轨道环绕，或用 WASD / 方向键移动。`Q` 与 `E`（或 Page Down / Page Up）改变高度。按住 Shift 更快。 |
+| **Sit back down / 坐回去** | Returns to the audience camera. / 回到观众席机位。 |
+| Space | Play or pause, unless you are typing in a field. / 演出或暂停。正在输入时不会触发。 |
+| Esc | Closes the help note, blurs a field, or folds the script panel. / 关掉说明、让输入框失焦，或收起剧本栏。 |
+
+The transport under the subtitle can step one beat, stop, or restart. The speed menu offers `0.75`, `1`, and `1.25`. Speech uses the Web Speech API when it is available and the **Speech / 朗读** toggle is on. If the browser has no voices, the line simply holds for an estimated duration and the show continues. Missing voices are not treated as a failure.
+
+字幕下的走带可以上一拍、下一拍、停止或重来。速度菜单是 `0.75`、`1`、`1.25`。朗读打开且浏览器提供 Web Speech 时才会出声。没有语音时，台词按估计的时长停住，然后继续。缺少语音不算失败。
+
+**中文字幕** toggles the gloss for lines that have a `lineZh`. The panel language button switches the chrome between 中文 and English. Until you touch the subtitle checkbox, the gloss follows that language.
+
+**中文字幕** 开关控制已有 `lineZh` 的台词。面板上的语言按钮切换界面的中文和 English。在你改过字幕复选框之前，字幕语言跟着界面语言走。
+
+## Experiments / 试验
+
+Each switch is stored in `localStorage` under `ai-theater-experiments`. All of them start on.
+
+每个开关都存在 `localStorage` 的 `ai-theater-experiments` 里。默认全开。
+
+| Id | What you should see / 你会看到 |
+| --- | --- |
+| `idle` | Breath, weight shift, blink. / 呼吸、重心和眨眼。 |
+| `lookAt` | Heads turn toward the person being addressed, with a small lag. / 头转向受话的人，带一点滞后。 |
+| `lips` | Jaw and mouth while a line is spoken. / 说话时的下颌和嘴。 |
+| `spotlight` | The follow spot leans toward the speaker. / 追光偏向正在说话的人。 |
+| `marks` | Stage marks (`CS`, `DL`, `DR`, …) on the floor. / 台面上的走位标记。 |
+| `posture` | A posture stacked on top of the gesture for the beat's emotion. / 在手势之上，按情绪加上的体态。 |
+| `audience` | The house fidgets, leans in on a soliloquy, and claps between scenes. Your own seat stays either way. / 观众席会晃、独白时探身，换场时鼓掌。你自己的座位一直在。 |
+| `curtains` | The red curtain closes when the show is stopped and opens when it plays. Off, the curtain stays open. / 停止时合上红幕，演出时拉开。关掉则幕一直开着。 |
+
+## Project structure / 目录
+
+```text
+index.html              page, import map for three@0.160.0, inline favicon
+style.css
+src/main.js             boot, frame loop, window.__theater
+src/parse/              rule parser, AI placeholder, presets, lexicon
+src/performance/        Performance JSON, director, speech timing
+src/stage/              set, marks, curtains, lights
+src/actors/             rig, cast, audience
+src/camera/cameras.js   audience, cinematic, free
+src/ui/                 panel and strings
+src/data/               samples, subtitle glosses, curated JSON
+src/runtime/live.js     shared show state (streaming UI is only a stub)
+src/util/math.js
+tools/prompt-performance.md
+tools/parse-with-claude.mjs
+tools/smoke-parse.mjs
+```
+
+`window.__theater` exposes `load`, `play`, `pause`, `pasteAndPlay`, `setMuted`, `setCamera`, `setExperiment`, `getState`, and `waitIdle` for a local smoke test. It is not a supported public API.
+
+`window.__theater` 提供 `load`、`play`、`pause`、`pasteAndPlay`、`setMuted`、`setCamera`、`setExperiment`、`getState`、`waitIdle`，给本地冒烟测试用。这不是对外承诺的 API。
+
+`tools/smoke-parse.mjs` checks the rule parser in Node, with no browser and no network. `tools/parse-with-claude.mjs` fills `tools/prompt-performance.md` and prints the prompt. It does **not** call `claude` unless you pass `--invoke` yourself, on a machine where that CLI is already installed. The page never runs it and never sees an API key.
+
+`tools/smoke-parse.mjs` 在 Node 里检查规则解析器，不打开浏览器，也不联网。`tools/parse-with-claude.mjs` 会把剧本填进 `tools/prompt-performance.md` 并打印提示词。除非你自己在已经安装 Claude CLI 的机器上加上 `--invoke`，否则它**不会**调用 `claude`。网页不会运行它，也看不到任何 API 密钥。
+
+```bash
+node tools/smoke-parse.mjs
+node tools/parse-with-claude.mjs path/to/script.txt
+```
+
+## Parser limitations / 解析器的限度
+
+The rule parser is a cue-and-direction heuristic, not a dramaturg.
+
+规则解析器只是「角色提示 + 舞台指示」的启发式，不是戏剧构作。
+
+- Cues need a Latin-script name, either in capitals (`HAMLET.`) or in title case (`Ophelia:`). A Chinese name with no Latin cue is not detected. Ids are slugs of ASCII letters and digits, so a name that cannot be slugged becomes `actor`.
+- 角色提示需要拉丁字母的名字，全大写（`HAMLET.`）或标题式（`Ophelia:`）。没有拉丁字母提示的中文名认不出来。`id` 是 ASCII 字母和数字的 slug，无法 slug 的名字会变成 `actor`。
+- Long speeches are cut on sentence punctuation into beats of roughly a few dozen words. Verse line breaks are joined first.
+- 长台词按句读切开，大约几十词一拍。诗行会先被拼起来。
+- Blocking is a guess: one person stands center (`cs`); two people take `dl` and `dr`. Entrances come from the wings. It will not reproduce a printed prompt book.
+- 走位是猜的：一个人站在中（`cs`）；两个人分站 `dl` 和 `dr`。上场从侧幕走进来。它不会还原印刷本里的调度。
+- Emotions and gestures come from a small word list. A direction it does not know is kept as a warning and does not move anyone.
+- 情绪和动作来自一张小词表。不认识的舞台指示只留下警告，不会因此移动人。
+- “Enter” / “Exit” / “Exeunt”, “aside”, and a handful of verbs (kneel, bow, weep, pace, draw a sword, …) are the directions it acts on.
+- 它会执行的指示主要是 Enter / Exit / Exeunt、aside，以及下跪、鞠躬、哭泣、踱步、拔剑等少数动词。
+- The AI parser is a placeholder. With no endpoint configured it records `ai-fallback-no-backend` and uses the rules. No key is shipped, and the page does not call a paid API.
+- AI 解析只是占位。没有配置端点时会记下 `ai-fallback-no-backend`，然后用规则。仓库里没有密钥，页面也不调用付费 API。
+
+## A note on the acting / 关于表演
+
+v1's bodies are built from boxes, capsules, and spheres. Walks, looks, and the curtain are timed procedures, not motion capture. Later passes can replace a gesture or a costume without changing the Performance JSON. Treat the current movement as a sketch that will keep evolving.
+
+第一版的身体是盒子、胶囊和球搭的。走路、视线和大幕都是计时的程序，不是动作捕捉。以后可以换掉某个手势或某套服装，而不改 Performance JSON。把现在的动作看成还会继续长的草图。
+
+## Roadmap / 以后
+
+Not in this version, and not promised as a schedule:
+
+这一版没有做，也不当成工期承诺：
+
+- Faster rehearsal controls, and a streaming path so a long script can start before the whole parse is finished. `src/runtime/live.js` only shares state today.
+- 更快的排练控制，以及流式路径，让长剧本不用等整份解析结束再开演。`src/runtime/live.js` 现在只是共享状态。
+- More actor styles than the eight costumes.
+- 比现在八套服装更多的演员样式。
+- A real server-side parser, if one is ever added, would keep the key off the page and return the same Performance JSON. v1 does not include that server.
+- 若以后真的加上服务器端解析，密钥会留在服务器上，返回的仍是同一份 Performance JSON。第一版不包含那台服务器。
