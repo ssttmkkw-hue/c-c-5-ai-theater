@@ -61,7 +61,8 @@ for (let i = 0; i < STYLES.length; i++) {
     hair: '#241810',
     voice: { lang: 'en-GB', pitch: 1, rate: 1 },
   }, { defer: true, style: STYLES[i] === 'gltf' || STYLES[i] === 'vrm' ? 'procedural' : STYLES[i] });
-  const x = (i - (STYLES.length - 1) / 2) * span;
+  // Negate X: the camera looks toward +Z, so world +X is on the left of the screen.
+  const x = ((STYLES.length - 1) / 2 - i) * span;
   actor.snap(x, 0.15);
   actor.yaw = 0;
   actor.setVisible(true);
@@ -83,7 +84,7 @@ Promise.all(actors.map(async (actor, i) => {
   const id = STYLES[i];
   if (id === 'gltf' || id === 'vrm' || actor.styleId !== id) {
     await actor.applyStyle(id);
-    actor.snap((i - (STYLES.length - 1) / 2) * span, 0.15);
+    actor.snap(((STYLES.length - 1) / 2 - i) * span, 0.15);
     actor.setVisible(true);
     actor.setGesture(GESTURES[i]);
     actor.gestureBlend = 1;
