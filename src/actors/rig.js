@@ -39,7 +39,43 @@ function limbGeo(length, radius) {
   return new THREE.CapsuleGeometry(radius, mid, 3, 6);
 }
 
+let toonMode = false;
+let toonGradient = null;
+let outlineMat = null;
+
+function gradient() {
+  if (toonGradient) return toonGradient;
+  const canvas = document.createElement('canvas');
+  canvas.width = 4;
+  canvas.height = 1;
+  const g = canvas.getContext('2d');
+  g.fillStyle = '#2a2833';
+  g.fillRect(0, 0, 1, 1);
+  g.fillStyle = '#6e6a78';
+  g.fillRect(1, 0, 1, 1);
+  g.fillStyle = '#f4f0e8';
+  g.fillRect(2, 0, 2, 1);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  toonGradient = tex;
+  outlineMat = new THREE.MeshBasicMaterial({ color: '#16131c', side: THREE.BackSide });
+  outlineMat.userData.shared = true;
+  return tex;
+}
+
 function std(color, extras = {}) {
+  if (toonMode) {
+    return new THREE.MeshToonMaterial({
+      color,
+      gradientMap: gradient(),
+      emissive: extras.emissive ?? 0x000000,
+      emissiveIntensity: extras.emissiveIntensity ?? 0,
+      transparent: extras.transparent ?? false,
+      opacity: extras.opacity ?? 1,
+    });
+  }
   return new THREE.MeshStandardMaterial({
     color,
     roughness: extras.roughness ?? 0.7,
@@ -57,6 +93,15 @@ function mesh(geo, material, parent, x, y, z) {
   m.castShadow = true;
   m.receiveShadow = true;
   parent.add(m);
+  if (toonMode && outlineMat && geo) {
+    const shell = new THREE.Mesh(geo, outlineMat);
+    shell.position.copy(m.position);
+    shell.scale.set(1.055, 1.055, 1.055);
+    shell.castShadow = false;
+    shell.receiveShadow = false;
+    shell.userData.outline = true;
+    parent.add(shell);
+  }
   return m;
 }
 
@@ -70,7 +115,9 @@ function joint(parent, name, x, y, z, joints) {
   return g;
 }
 
-export function createRig(character) {
+export function createRig(character, options = {}) {
+  toonMode = options.toon === true;
+  if (toonMode) gradient();
   const costume = character.costume || 'courtier';
   const ghost = costume === 'ghost';
   const joints = {};
@@ -107,7 +154,12 @@ export function createRig(character) {
   mesh(GEO.neck, skin, neck, 0, 0.04, 0);
 
   const head = joint(neck, 'head', 0, 0.1, 0, joints);
-  mesh(GEO.head, skin, head, 0, 0.2, 0);
+  const skull = mesh(GEO.head, skin, head, 0, 0.2, 0);
+  if (toonMode) {
+    skull.scale.set(1.14, 1.04, 1.1);
+    const shell = head.children.find((child) => child.userData.outline && child.geometry === GEO.head);
+    if (shell) shell.scale.set(1.14 * 1.07, 1.04 * 1.07, 1.1 * 1.07);
+  }
   mesh(GEO.nose, skin, head, 0, 0.18, -0.2);
 
   const eyeL = mesh(GEO.eye, white, head, -0.08, 0.24, -0.17);

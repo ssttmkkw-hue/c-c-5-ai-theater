@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { createRig } from './rig.js';
+import { createPaperRig } from './styles/paper.js';
+import { solveIk } from './styles/ik.js';
 import { STAGE_Y } from '../stage/layout.js';
 import { GESTURES } from '../parse/lexicon.js';
 import { live } from '../runtime/live.js';
@@ -14,8 +16,36 @@ const NAMES = [
 
 const _head = new THREE.Vector3();
 
+const SYNC_STYLES = new Set(['procedural', 'paper', 'toon', 'ik']);
+
+function syncBody(style, character) {
+  if (style === 'paper') return createPaperRig(character);
+  if (style === 'toon') return { ...createRig(character, { toon: true }), styleId: 'toon', ik: false, clip: null };
+  if (style === 'ik') return { ...createRig(character), styleId: 'ik', ik: true, clip: null };
+  return { ...createRig(character), styleId: 'procedural', ik: false, clip: null };
+}
+
+function disposeTree(root) {
+  if (!root) return;
+  const seen = new Set();
+  const geos = new Set();
+  root.traverse((obj) => {
+    if (obj.geometry?.userData?.owned && !geos.has(obj.geometry)) {
+      geos.add(obj.geometry);
+      obj.geometry.dispose();
+    }
+    const mats = obj.material ? (Array.isArray(obj.material) ? obj.material : [obj.material]) : [];
+    for (const m of mats) {
+      if (!m || seen.has(m) || m.userData?.shared) continue;
+      seen.add(m);
+      if (m.map?.userData?.owned) m.map.dispose();
+      m.dispose?.();
+    }
+  });
+}
+
 export class Actor {
-  constructor(character) {
+  constructor(character, options = {}) {
     this.id = character.id;
     this.name = character.name;
     this.color = character.color;
@@ -76,31 +106,84 @@ export class Actor {
     this.acc = {};
     for (const n of NAMES) this.acc[n] = { x: 0, y: 0, z: 0 };
 
-    const rig = createRig(character);
-    this.root = rig.root;
-    this.joints = rig.joints;
-    this.sword = rig.sword;
-    this.lidL = rig.lidL;
-    this.lidR = rig.lidR;
-    this.mouth = rig.mouth;
-    this.pupilL = rig.pupilL;
-    this.pupilR = rig.pupilR;
+    this._character = character;
+    this._styleGen = 0;
+    this.styleId = 'procedural';
+    this.clipDriver = null;
+    this.ik = false;
+    this.joints = {};
+    const initial = options.style && SYNC_STYLES.has(options.style) ? options.style : 'procedural';
+    this._adopt(syncBody(initial, character));
     this.root.visible = false;
+    if (!options.defer && live.actorStyle && live.actorStyle !== initial) {
+      void this.applyStyle(live.actorStyle);
+    }
+  }
+
+  _adopt(built) {
+    const parent = this.root?.parent || null;
+    const visible = this.visible;
+    if (this.root) {
+      parent?.remove(this.root);
+      this.clipDriver?.dispose?.();
+      disposeTree(this.root);
+    }
+    this.root = built.root;
+    this.joints = built.joints || {};
+    this.sword = built.sword || null;
+    this.lidL = built.lidL || null;
+    this.lidR = built.lidR || null;
+    this.mouth = built.mouth || null;
+    this.pupilL = built.pupilL || null;
+    this.pupilR = built.pupilR || null;
+    this.clipDriver = built.clip || null;
+    this.ik = Boolean(built.ik);
+    this.styleId = built.styleId || 'procedural';
+    this.root.visible = Boolean(visible);
+    this.root.position.set(this.x, this.baseY + this.drop, this.z);
+    this.root.rotation.y = this.yaw;
+    if (parent) parent.add(this.root);
+  }
+
+  async applyStyle(style) {
+    const next = SYNC_STYLES.has(style) || style === 'gltf' || style === 'vrm' ? style : 'procedural';
+    const gen = ++this._styleGen;
+    try {
+      if (next === 'gltf') {
+        const { createGltfBody } = await import('./styles/gltf.js');
+        const built = await createGltfBody(this._character);
+        if (gen !== this._styleGen) {
+          disposeTree(built.root);
+          return;
+        }
+        this._adopt(built);
+        return;
+      }
+      if (next === 'vrm') {
+        const { createVrmBody } = await import('./styles/vrm.js');
+        const built = await createVrmBody(this._character);
+        if (gen !== this._styleGen) {
+          disposeTree(built.root);
+          return;
+        }
+        this._adopt(built);
+        return;
+      }
+      if (gen !== this._styleGen) return;
+      this._adopt(syncBody(next, this._character));
+    } catch (error) {
+      console.warn(`actor style ${next} failed`, error);
+      if (gen === this._styleGen && next !== 'procedural') this._adopt(syncBody('procedural', this._character));
+    }
   }
 
   dispose() {
     if (this._arrive) this._finishWalk(false);
+    this._styleGen += 1;
+    this.clipDriver?.dispose?.();
+    this.clipDriver = null;
     this.root.parent?.remove(this.root);
-    const seen = new Set();
-    this.root.traverse((obj) => {
-      const mats = obj.material ? (Array.isArray(obj.material) ? obj.material : [obj.material]) : [];
-      for (const m of mats) {
-        if (m && !seen.has(m)) {
-          seen.add(m);
-          m.dispose?.();
-        }
-      }
-    });
+    disposeTree(this.root);
   }
 
   setVisible(v) {
@@ -177,7 +260,12 @@ export class Actor {
   }
 
   headWorld(target = _head) {
-    this.joints.head.getWorldPosition(target);
+    const head = this.clipDriver?.head || this.joints?.head;
+    if (head?.getWorldPosition) {
+      head.getWorldPosition(target);
+      return target;
+    }
+    target.set(this.x, this.baseY + 1.55, this.z);
     return target;
   }
 
@@ -271,6 +359,19 @@ export class Actor {
       this.glanceV = damp(this.glanceV, this.holdingCue ? this.glance : 0, dt, 8);
     }
 
+    if (this.clipDriver) {
+      if (this.talking && live.experiments.lips) {
+        this.syllable += dt * (9 + this.lipPulse * 8) * speed;
+        this.lipPulse = Math.max(0, this.lipPulse - dt * 2.5);
+      }
+      const idleSway = live.experiments.idle && !this.walking ? Math.sin(this.t * 0.8 + this.seed) * 0.02 : 0;
+      this.root.position.set(this.x + this.paceX, this.baseY + this.drop + bob, this.z);
+      this.root.rotation.y = this.yaw;
+      this.root.rotation.z = idleSway;
+      this.clipDriver.update(this, dt);
+      return;
+    }
+
     for (const n of NAMES) {
       const a = this.acc[n];
       a.x = 0;
@@ -333,6 +434,7 @@ export class Actor {
     this.root.position.set(this.x + this.paceX, this.baseY + this.drop + bob, this.z);
     this.root.rotation.y = this.yaw;
     this.root.rotation.z = idleSway;
+    if (this.ik) solveIk(this);
   }
 
   add(name, x = 0, y = 0, z = 0) {

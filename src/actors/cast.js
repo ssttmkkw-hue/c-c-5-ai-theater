@@ -80,6 +80,10 @@ export class Cast {
     live.clapping = false;
   }
 
+  async applyStyle(style) {
+    await Promise.all([...this.actors.values()].map((actor) => actor.applyStyle(style)));
+  }
+
   update(dt) {
     const speaker = live.speakerId ? this.actors.get(live.speakerId) : null;
     if (speaker && speaker.visible) {
