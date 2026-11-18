@@ -36,6 +36,7 @@ export const GESTURES = [
   'shrug',
   'nod',
   'shakeHead',
+  'listen',
 ];
 
 const EMOTION_SET = new Set(EMOTIONS);

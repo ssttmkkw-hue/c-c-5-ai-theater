@@ -101,6 +101,8 @@ export class Actor {
     this.blinkAcc = (hashString(character.id) % 10) / 5;
     this.blinkWave = 0;
     this.nextBlink = 2;
+    this._neutralAt = 0;
+    this._holdBody = false;
     this.seed = hashString(character.id);
     this.t = this.seed % 10;
     this.acc = {};
@@ -139,7 +141,9 @@ export class Actor {
     this.clipDriver = built.clip || null;
     this.ik = Boolean(built.ik);
     this.styleId = built.styleId || 'procedural';
-    this.root.visible = Boolean(visible);
+    if (this._holdBody && (this.styleId !== 'procedural' || this._styleFailed)) this._holdBody = false;
+    this._styleFailed = false;
+    this.root.visible = Boolean(visible) && !this._holdBody;
     this.root.position.set(this.x, this.baseY + this.drop, this.z);
     this.root.rotation.y = this.yaw;
     if (parent) parent.add(this.root);
@@ -148,6 +152,10 @@ export class Actor {
   async applyStyle(style) {
     const next = SYNC_STYLES.has(style) || style === 'gltf' || style === 'vrm' ? style : 'procedural';
     const gen = ++this._styleGen;
+    if ((next === 'gltf' || next === 'vrm') && this.styleId === 'procedural') {
+      this._holdBody = true;
+      this.root.visible = false;
+    }
     try {
       if (next === 'gltf') {
         const { createGltfBody } = await import('./styles/gltf.js');
@@ -173,7 +181,10 @@ export class Actor {
       this._adopt(syncBody(next, this._character));
     } catch (error) {
       console.warn(`actor style ${next} failed`, error);
-      if (gen === this._styleGen && next !== 'procedural') this._adopt(syncBody('procedural', this._character));
+      if (gen === this._styleGen && next !== 'procedural') {
+        this._styleFailed = true;
+        this._adopt(syncBody('procedural', this._character));
+      }
     }
   }
 
@@ -188,7 +199,7 @@ export class Actor {
 
   setVisible(v) {
     this.visible = v;
-    this.root.visible = v;
+    this.root.visible = Boolean(v) && !this._holdBody;
   }
 
   snap(x, z) {
@@ -230,6 +241,7 @@ export class Actor {
 
   setEmotion(name) {
     this.emotion = name || 'neutral';
+    this._neutralAt = 0;
   }
 
   setGesture(name) {
@@ -312,6 +324,11 @@ export class Actor {
 
     this.gestureBlend = damp(this.gestureBlend, 1, dt, 5.5);
     this.gestureAge += dt;
+    if (this._neutralAt && this.t >= this._neutralAt && this.gesture === 'listen') {
+      this.emotion = 'neutral';
+      this._neutralAt = 0;
+    }
+    this.tickBlink(dt);
     const kneeling = this.gesture === 'kneel' && !this.walking;
     this.drop = damp(this.drop, kneeling ? -0.46 : 0, dt, 5);
     const bob = Math.abs(Math.sin(this.walkPhase)) * 0.035 * this.walkAmp;
@@ -368,6 +385,15 @@ export class Actor {
       this.root.position.set(this.x + this.paceX, this.baseY + this.drop + bob, this.z);
       this.root.rotation.y = this.yaw;
       this.root.rotation.z = idleSway;
+      this.applyLids();
+      if (this.mouth) {
+        if (this.talking && live.experiments.lips) {
+          const open = Math.abs(Math.sin(this.syllable));
+          this.mouth.scale.y = 0.7 + open * 2.1;
+        } else {
+          this.mouth.scale.y = damp(this.mouth.scale.y, 1, dt, 8);
+        }
+      }
       this.clipDriver.update(this, dt);
       return;
     }
@@ -407,24 +433,7 @@ export class Actor {
       this.mouth.scale.y = damp(this.mouth.scale.y, 1, dt, 8);
     }
 
-    if (live.experiments.idle && this.lidL && this.lidR) {
-      this.blinkAcc += dt;
-      if (this.blinkAcc > this.nextBlink) {
-        this.blinkWave += dt * 13;
-        if (this.blinkWave >= Math.PI) {
-          this.blinkWave = 0;
-          this.blinkAcc = 0;
-          this.nextBlink = 1.8 + (this.seed % 9) / 3;
-        }
-      }
-      const shut = this.blinkWave > 0 ? Math.sin(this.blinkWave) : 0;
-      const y = 0.12 + shut * 1.05;
-      this.lidL.scale.y = y;
-      this.lidR.scale.y = y;
-    } else if (this.lidL && this.lidR) {
-      this.lidL.scale.y = 0.12;
-      this.lidR.scale.y = 0.12;
-    }
+    this.applyLids();
 
     this.applyPupils(dt);
 
@@ -435,6 +444,28 @@ export class Actor {
     this.root.rotation.y = this.yaw;
     this.root.rotation.z = idleSway;
     if (this.ik) solveIk(this);
+  }
+
+  tickBlink(dt) {
+    if (!live.experiments.idle) {
+      this.blinkWave = 0;
+      return;
+    }
+    this.blinkAcc += dt;
+    if (this.blinkAcc <= this.nextBlink) return;
+    this.blinkWave += dt * 13;
+    if (this.blinkWave >= Math.PI) {
+      this.blinkWave = 0;
+      this.blinkAcc = 0;
+      this.nextBlink = 1.8 + (this.seed % 9) / 3;
+    }
+  }
+
+  applyLids() {
+    if (!this.lidL || !this.lidR) return;
+    const shut = this.blinkWave > 0 ? Math.sin(this.blinkWave) : 0;
+    this.lidL.scale.y = 0.12 + shut * 1.05;
+    this.lidR.scale.y = 0.12 + shut * 1.05;
   }
 
   add(name, x = 0, y = 0, z = 0) {
@@ -620,9 +651,19 @@ function poseOf(g, age, talkAmp) {
   }
   if (g === 'nod') return { head: [Math.sin(age * 6) * 0.28, 0, 0] };
   if (g === 'shakeHead') return { head: [0, Math.sin(age * 8) * 0.4, 0] };
+  if (g === 'listen') {
+    const cycle = age % 4.4;
+    const nod = cycle > 3.15 ? Math.sin(((cycle - 3.15) / 1.15) * Math.PI) * 0.22 : 0;
+    return {
+      head: [-0.08 - nod, 0.05, 0.14],
+      chest: [0.05, 0, 0],
+      shoulderL: [0.12, 0, 0.08],
+      shoulderR: [0.12, 0, -0.08],
+    };
+  }
   if (g === 'talk') {
     const a = talkAmp || 0;
-    return { shoulderR: [0.22 + a * 0.62, -0.12, -0.06], elbowR: [0.18 + a * 0.5, 0, 0] };
+    return { shoulderR: [0.04 + a * 0.8, -0.04 - a * 0.1, -0.02 - a * 0.05], elbowR: [0.04 + a * 0.7, 0, 0] };
   }
   return POSES[g] || POSES.idle;
 }

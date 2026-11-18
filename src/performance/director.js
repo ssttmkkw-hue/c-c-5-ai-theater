@@ -8,6 +8,13 @@ import { hashString } from '../util/math.js';
 
 const HOLD_MS = 20000;
 
+function lineNames(name, line) {
+  if (!name || !line) return false;
+  if (/[\u3400-\u9fff]/.test(name)) return line.includes(name);
+  const esc = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${esc}\\b`, 'i').test(line);
+}
+
 function nameFromId(id) {
   const raw = String(id || 'courtier').replace(/[-_]+/g, ' ').trim();
   if (!raw) return 'Courtier';
@@ -558,7 +565,15 @@ export class Director {
         actor.setVisible(true);
       }
       const others = this.cast.visibleList().filter((a) => a !== actor);
-      for (const other of others) other.lookRef = actor.id;
+      for (const other of others) {
+        other.lookRef = actor.id;
+        if (other.gesture !== 'listen') {
+          other.setGesture('listen');
+          if (other.emotion === 'neutral') other.setEmotion('curious');
+          other._neutralAt = other.t + 2;
+        }
+      }
+      actor._neutralAt = 0;
       actor.lookRef = beat.lookAt || (others.length ? others[others.length - 1].id : 'audience');
       live.soliloquy = (actor.lookRef === 'audience' || !others.length) && others.length === 0;
       // A line with no mark must not be spoken from the wings. Fresh entrances
@@ -568,6 +583,21 @@ export class Director {
         const point = standPoint(move);
         const arrived = await actor.walkTo(point.x, point.z, () => gen !== this.generation || !this.playing);
         if (!arrived || gen !== this.generation || !this.playing) return false;
+      }
+      const named = beat.lookAt ? this.cast.get(beat.lookAt) : null;
+      if (named && named.visible && named !== actor && lineNames(named.name, beat.line || '')) {
+        const dx = named.x - actor.x;
+        const dz = named.z - actor.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist > 0.85) {
+          const step = Math.min(0.32, (dist - 0.7) * 0.45);
+          const stepped = await actor.walkTo(
+            actor.x + (dx / dist) * step,
+            actor.z + (dz / dist) * step,
+            () => gen !== this.generation || !this.playing,
+          );
+          if (!stepped || gen !== this.generation || !this.playing) return false;
+        }
       }
       this.cameras.onBeat(this.index, { x: actor.x, z: actor.z });
     } else {
@@ -590,6 +620,7 @@ export class Director {
         onBoundary: () => actor?.pulseLip(),
       });
       actor?.setTalking(false);
+      if (actor && actor.gesture !== 'idle') actor.setGesture('idle');
       if (!spoken || gen !== this.generation || !this.playing) return false;
     }
 
