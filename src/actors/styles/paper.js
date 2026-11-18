@@ -127,16 +127,23 @@ export function createPaperRig(character) {
   const mouthMat = new THREE.MeshStandardMaterial({ color: '#7a3b42', roughness: 0.5 });
 
   const pelvis = joint(root, 'pelvis', 0, 0.9, 0, joints);
-  sheet(pelvis, 0.46, 0.28, torsoMat, 0, 0.02, 0);
+  sheet(pelvis, 0.48, 0.42, torsoMat, 0, -0.02, -0.01);
   const spine = joint(pelvis, 'spine', 0, 0.12, 0, joints);
   const chest = joint(spine, 'chest', 0, 0.16, 0, joints);
-  sheet(chest, 0.52, 0.46, torsoMat, 0, 0.12, -0.01);
-  const neck = joint(chest, 'neck', 0, 0.28, 0, joints);
-  const head = joint(neck, 'head', 0, 0.08, 0, joints);
-  sheet(head, 0.52, 0.56, headMat, 0, 0.22, -0.02);
+  sheet(chest, 0.52, 0.5, torsoMat, 0, 0.1, -0.02);
+  const neck = joint(chest, 'neck', 0, 0.2, 0, joints);
+  const head = joint(neck, 'head', 0, 0.06, 0, joints);
+  // A flat card turns edge-on in a bow and disappears. A thick block stays a head.
+  const skull = new THREE.Mesh(
+    ownedGeo(new THREE.BoxGeometry(0.4, 0.46, 0.1)),
+    new THREE.MeshStandardMaterial({ color: hair, roughness: 0.9 }),
+  );
+  skull.position.set(0, 0.16, -0.01);
+  head.add(skull);
+  sheet(head, 0.5, 0.54, headMat, 0, 0.16, -0.07);
 
   const eyeL = new THREE.Mesh(ownedGeo(new THREE.SphereGeometry(0.035, 8, 8)), skinMat);
-  eyeL.position.set(-0.08, 0.26, -0.03);
+  eyeL.position.set(-0.08, 0.2, -0.09);
   eyeL.scale.z = 0.4;
   head.add(eyeL);
   const eyeR = eyeL.clone();
@@ -148,15 +155,15 @@ export function createPaperRig(character) {
   const pupilR = pupilL.clone();
   eyeR.add(pupilR);
 
-  const browL = joint(head, 'browL', -0.08, 0.34, -0.04, joints);
-  const browR = joint(head, 'browR', 0.08, 0.34, -0.04, joints);
+  const browL = joint(head, 'browL', -0.08, 0.28, -0.1, joints);
+  const browR = joint(head, 'browR', 0.08, 0.28, -0.1, joints);
   const browMat = new THREE.MeshStandardMaterial({ color: hair, roughness: 0.8 });
   const browGeo = ownedGeo(new THREE.BoxGeometry(0.1, 0.02, 0.01));
   const bL = new THREE.Mesh(browGeo, browMat);
   browL.add(bL);
   browR.add(new THREE.Mesh(browGeo, browMat));
 
-  const jaw = joint(head, 'jaw', 0, 0.08, -0.02, joints);
+  const jaw = joint(head, 'jaw', 0, 0.06, -0.06, joints);
   const mouth = new THREE.Mesh(ownedGeo(new THREE.PlaneGeometry(0.12, 0.035)), mouthMat);
   mouth.position.set(0, 0, -0.04);
   mouth.rotation.y = Math.PI;
@@ -165,7 +172,7 @@ export function createPaperRig(character) {
   const lidMat = new THREE.MeshStandardMaterial({ color: character.skin || '#e0b394', roughness: 0.7 });
   const lidGeo = ownedGeo(new THREE.PlaneGeometry(0.09, 0.05));
   const lidL = new THREE.Mesh(lidGeo, lidMat);
-  lidL.position.set(-0.08, 0.3, -0.045);
+  lidL.position.set(-0.08, 0.22, -0.1);
   lidL.rotation.y = Math.PI;
   lidL.scale.y = 0.12;
   head.add(lidL);
@@ -217,6 +224,8 @@ export function createPaperRig(character) {
   sword.visible = false;
   wristR.add(sword);
 
+  addPaperCostume(character.costume, color, head, chest, pelvis);
+
   return {
     root,
     joints,
@@ -230,6 +239,84 @@ export function createPaperRig(character) {
     ik: false,
     clip: null,
   };
+}
+
+function addPaperCostume(costume, color, head, chest, pelvis) {
+  const kind = costume || 'courtier';
+  const crowned = kind === 'prince' || kind === 'king' || kind === 'queen' || kind === 'ghost';
+  const cloaked = kind === 'prince' || kind === 'king' || kind === 'traveler' || kind === 'ghost' || kind === 'courtier';
+  const skirted = kind === 'maiden' || kind === 'queen';
+  if (crowned) {
+    const crown = paint(160, 80, (g, w, h) => {
+      g.clearRect(0, 0, w, h);
+      g.fillStyle = kind === 'ghost' ? '#e7f4f8' : '#e2b657';
+      g.beginPath();
+      g.moveTo(8, h - 8);
+      g.lineTo(8, 36);
+      g.lineTo(36, 8);
+      g.lineTo(64, 40);
+      g.lineTo(80, 6);
+      g.lineTo(96, 40);
+      g.lineTo(124, 8);
+      g.lineTo(152, 36);
+      g.lineTo(152, h - 8);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = '#241c18';
+      g.lineWidth = 5;
+      g.stroke();
+    });
+    sheet(head, 0.4, 0.18, crown, 0, 0.46, -0.08);
+  }
+  if (cloaked) {
+    const cloakColor = kind === 'traveler' ? '#24523a' : kind === 'king' ? '#6e2430' : kind === 'ghost' ? '#d5e6ee' : kind === 'prince' ? '#243656' : shade(color, 0.55);
+    const cloak = paint(128, 220, (g, w, h) => {
+      g.clearRect(0, 0, w, h);
+      g.fillStyle = cloakColor;
+      g.beginPath();
+      g.moveTo(20, 8);
+      g.lineTo(w - 20, 8);
+      g.lineTo(w - 4, h - 6);
+      g.lineTo(4, h - 6);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = '#241c18';
+      g.lineWidth = 6;
+      g.stroke();
+    });
+    sheet(chest, 0.72, 0.9, cloak, 0, -0.08, 0.06);
+  }
+  if (skirted) {
+    const skirtColor = kind === 'queen' ? '#8d3d62' : '#f0d5c4';
+    const skirt = paint(160, 200, (g, w, h) => {
+      g.clearRect(0, 0, w, h);
+      g.fillStyle = skirtColor;
+      g.beginPath();
+      g.moveTo(46, 8);
+      g.lineTo(w - 46, 8);
+      g.lineTo(w - 6, h - 6);
+      g.lineTo(6, h - 6);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = '#241c18';
+      g.lineWidth = 6;
+      g.stroke();
+    });
+    sheet(pelvis, 0.78, 0.62, skirt, 0, -0.36, -0.02);
+  }
+  if (kind === 'traveler' || kind === 'visitor' || kind === 'courtier') {
+    const hat = paint(128, 64, (g, w, h) => {
+      g.clearRect(0, 0, w, h);
+      g.fillStyle = kind === 'visitor' ? '#2c3a55' : '#4a3424';
+      g.fillRect(28, 8, 72, 28);
+      g.fillRect(8, 34, w - 16, 16);
+      g.strokeStyle = '#241c18';
+      g.lineWidth = 4;
+      g.strokeRect(28, 8, 72, 28);
+      g.strokeRect(8, 34, w - 16, 16);
+    });
+    sheet(head, 0.42, 0.16, hat, 0, 0.44, -0.06);
+  }
 }
 
 function shade(hex, amount) {
