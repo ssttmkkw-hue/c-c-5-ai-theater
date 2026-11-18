@@ -45,6 +45,8 @@ const readyPromise = new Promise((resolve) => {
 });
 let lastWarnings = [];
 let lastPerf = null;
+let loadedText = null;
+let liveToken = 0;
 let subsTouched = false;
 
 function readLang() {
@@ -66,7 +68,14 @@ const director = new Director({
   theater,
   cameras,
   onSubtitle: (payload) => ui?.setSubtitle(payload),
-  onChange: () => ui?.sync(),
+  onChange: () => {
+    if (director.performance?.warnings) {
+      lastWarnings = director.performance.warnings;
+      ui?.setWarnings(lastWarnings);
+    }
+    if (director.streaming || director.streamEnded) ui?.setJson(director.performance);
+    ui?.sync();
+  },
 });
 
 ui = mountUI({
@@ -75,6 +84,8 @@ ui = mountUI({
   setParser,
   loadAndPlay,
   parseIntoShow,
+  liveStart,
+  intervene: (action) => director.intervene(action),
   playFromPanel,
   togglePlay,
   setSpeed: (n) => director.setSpeed(n),
@@ -85,7 +96,7 @@ ui = mountUI({
   downloadJson,
   prevBeat: () => director.prevBeat(),
   nextBeat: () => director.nextBeat(),
-  stop: () => director.stop(),
+  stop: () => halt(),
   restart: () => director.restart(),
   dismissHelp,
 });
@@ -125,11 +136,13 @@ async function materialize(idOrPerf) {
   return null;
 }
 
-async function load(idOrPerf) {
+  async function load(idOrPerf) {
+  liveToken += 1;
   const perf = await materialize(idOrPerf);
   if (!perf) return null;
   lastPerf = perf;
   lastWarnings = perf.warnings || [];
+  loadedText = null;
   director.load(perf);
   ui.setJson(perf);
   ui.setWarnings(lastWarnings);
@@ -154,9 +167,74 @@ async function parseIntoShow(text) {
   return perf;
 }
 
-async function playFromPanel(text) {
-  if (!lastPerf) await parseIntoShow(text);
+function guessTitle(text) {
+  const line = String(text || '').split('\n').map((l) => l.trim()).find(Boolean) || '';
+  if (!line || line.length > 42) return live.lang === 'zh' ? '即兴' : 'Live';
+  return line.replace(/[.。!！?？]$/, '').slice(0, 42);
+}
+
+async function liveStart(text, options = {}) {
+  const raw = text == null ? ui.script.value : String(text);
+  ui.setScript(raw);
+  loadedText = raw;
+  const token = ++liveToken;
+  director.loadPartial({
+    title: options.title || guessTitle(raw),
+    source: options.source || '',
+    locale: options.locale || (live.lang === 'zh' ? 'zh' : 'en'),
+    note: options.note || '',
+  });
+  ui.setSubtitle({
+    name: '',
+    color: '#e2b15a',
+    text: live.lang === 'zh' ? '解析中…大幕已开' : 'Parsing… the curtain is open',
+  });
+  ui.setWarnings([]);
+  ui.sync();
+  const first = director.waitForFirstBeat();
   director.play();
+  const parsed = provider.parseStream(raw, (event) => {
+    if (token !== liveToken) return;
+    director.pushEvent(event);
+    if (director.performance) applyTranslations(director.performance);
+  }, {
+    title: options.title,
+    source: options.source,
+    locale: options.locale || (live.lang === 'zh' ? 'zh' : 'en'),
+    note: options.note,
+    allowPremise: options.allowPremise,
+  }).then(() => {
+    if (token !== liveToken) return director.performance;
+    if (director.performance) {
+      applyTranslations(director.performance);
+      lastPerf = director.performance;
+      lastWarnings = [...(director.performance.warnings || [])];
+    }
+    ui.setJson(lastPerf);
+    ui.setWarnings(lastWarnings);
+    ui.sync();
+    return lastPerf;
+  }).catch(() => {
+    if (token !== liveToken) return null;
+    director.pushEvent({ type: 'warning', message: 'ai-fallback-error' });
+    director.pushEvent({ type: 'end' });
+    return null;
+  });
+  await first;
+  void parsed;
+  return getState();
+}
+
+async function playFromPanel(text) {
+  if (director.playing && director.paused) {
+    director.play();
+    return;
+  }
+  if (!director.streaming && loadedText === text && director.playlist.length) {
+    director.play();
+    return;
+  }
+  await liveStart(text);
 }
 
 async function togglePlay(text) {
@@ -164,15 +242,33 @@ async function togglePlay(text) {
     director.pause();
     return;
   }
-  if (!lastPerf) await parseIntoShow(text);
-  director.play();
+  if (director.paused || (!director.streaming && loadedText === text && director.playlist.length)) {
+    director.play();
+    return;
+  }
+  await liveStart(text);
 }
 
 async function loadAndPlay(id) {
+  if (id === 'hamlet-a3s1-curated') {
+    await load(id);
+    director.play();
+    return;
+  }
   const sample = samples[id];
-  if (sample) ui.setScript(sample.script);
-  await load(id);
-  director.play();
+  if (!sample) return;
+  ui.setScript(sample.script);
+  await liveStart(sample.script, {
+    title: sample.title,
+    source: sample.source,
+    locale: sample.locale,
+    allowPremise: false,
+  });
+}
+
+function halt() {
+  liveToken += 1;
+  director.stop();
 }
 
 function setParser(mode) {
@@ -318,6 +414,12 @@ function getState() {
     lang: live.lang,
     title: director.performance?.title || '',
     parseWarnings: [...lastWarnings],
+    streaming: Boolean(director.streaming),
+    pendingBeats: director.pendingCount(),
+    streamEnded: Boolean(director.streamEnded),
+    timeToFirstBeatMs: director.timeToFirstBeatMs,
+    lastIntervention: director.lastIntervention,
+    holding: Boolean(director.holding),
   };
 }
 
@@ -327,7 +429,7 @@ const theaterApi = {
   load,
   play: () => director.play(),
   pause: () => director.pause(),
-  stop: () => director.stop(),
+  stop: () => halt(),
   restart: () => director.restart(),
   nextBeat: () => director.nextBeat(),
   prevBeat: () => director.prevBeat(),
@@ -339,11 +441,14 @@ const theaterApi = {
   setExperiment,
   listExperiments: () => [...EXPERIMENT_IDS],
   pasteAndPlay: async (text) => {
-    ui.setScript(text);
-    const perf = await parseIntoShow(text);
-    director.play();
-    return perf;
+    await liveStart(text);
+    return director.performance;
   },
+  parseStream: (text, onEventOrOpts, maybeOpts) => provider.parseStream(text, onEventOrOpts, maybeOpts),
+  liveStart,
+  intervene: (action) => director.intervene(action),
+  pushEvent: (event) => director.pushEvent(event),
+  pushBeat: (beat) => director.pushBeat(beat),
   waitIdle: () => readyPromise,
 };
 

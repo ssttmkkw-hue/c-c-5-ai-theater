@@ -26,6 +26,11 @@ export function mountUI(api) {
       <h1 data-i18n="title"></h1>
       <button type="button" id="lang-btn" class="text-btn"></button>
     </header>
+    <label class="field"><span data-i18n="paste"></span>
+      <textarea id="script" rows="6" spellcheck="false"></textarea>
+    </label>
+    <button type="button" id="perform-now" class="primary"></button>
+    <p id="live-status" class="live-status"></p>
     <label class="field"><span data-i18n="samples"></span>
       <select id="sample-select">
         <option value="hamlet-a3s1"></option>
@@ -40,9 +45,6 @@ export function mountUI(api) {
         <option value="rule"></option>
         <option value="ai"></option>
       </select>
-    </label>
-    <label class="field grow"><span data-i18n="paste"></span>
-      <textarea id="script" rows="8" spellcheck="false"></textarea>
     </label>
     <div class="row">
       <button type="button" id="parse-btn"></button>
@@ -103,9 +105,27 @@ export function mountUI(api) {
     expList.appendChild(label);
   }
 
+  const direct = document.getElementById('direct');
+  if (direct) {
+    direct.innerHTML = `
+      <span id="direct-label"></span>
+      <button type="button" data-act="angrier"></button>
+      <button type="button" data-act="replay"></button>
+      <button type="button" data-act="faster"></button>
+      <button type="button" data-act="hold"></button>
+      <button type="button" data-act="ending" class="later"></button>
+    `;
+    direct.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      api.intervene({ type: btn.dataset.act });
+    });
+  }
+
   const q = (sel) => panel.querySelector(sel) || document.querySelector(sel);
   const script = q('#script');
 
+  q('#perform-now').addEventListener('click', () => api.liveStart(script.value));
   q('#lang-btn').addEventListener('click', () => api.setLang(api.getState().lang === 'zh' ? 'en' : 'zh'));
   q('#load-play').addEventListener('click', () => api.loadAndPlay(q('#sample-select').value));
   q('#parser-select').addEventListener('change', (e) => api.setParser(e.target.value));
@@ -146,6 +166,19 @@ export function mountUI(api) {
   help.addEventListener('click', (e) => {
     if (e.target.closest('[data-dismiss]')) api.dismissHelp();
   });
+
+  function liveStatusText(state, L) {
+    const sketch = (state.parseWarnings || []).includes('local-sketch');
+    const prefix = sketch ? `${t(L, 'sketchLabel')} · ` : '';
+    const n = state.beatCount
+      ? Math.min(state.beatCount, (state.playing || state.paused) ? state.beatIndex + 1 : state.beatIndex)
+      : 0;
+    if (state.streaming && n > 0) return prefix + t(L, 'liveOn').replace('{n}', String(n));
+    if (state.streaming) return prefix + t(L, 'liveWait');
+    if (state.holding) return prefix + t(L, 'liveHold');
+    if (sketch) return t(L, 'sketchLabel');
+    return '';
+  }
 
   function lang() {
     return api.getState().lang === 'en' ? 'en' : 'zh';
@@ -210,7 +243,23 @@ export function mountUI(api) {
     document.getElementById('stop-btn').textContent = t(L, 'stop');
     document.getElementById('restart-btn').textContent = t(L, 'restart');
     q('#parse-btn').textContent = t(L, 'parse');
+    q('#perform-now').textContent = t(L, 'performNow');
     q('#load-play').textContent = t(L, 'loadPlay');
+    const status = document.getElementById('live-status');
+    if (status) status.textContent = liveStatusText(state, L);
+    const acts = {
+      angrier: 'actAngrier',
+      replay: 'actReplay',
+      faster: 'actFaster',
+      hold: 'actHold',
+      ending: 'actEnding',
+    };
+    const label = document.getElementById('direct-label');
+    if (label) label.textContent = t(L, 'directing');
+    for (const [act, key] of Object.entries(acts)) {
+      const btn = document.querySelector(`#direct [data-act="${act}"]`);
+      if (btn) btn.textContent = t(L, key);
+    }
     q('#mute-btn').textContent = state.muted ? t(L, 'speechOff') : t(L, 'speechOn');
     q('#mute-btn').setAttribute('aria-pressed', state.muted ? 'true' : 'false');
     q('#sit-btn').textContent = t(L, 'sit');

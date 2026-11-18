@@ -151,6 +151,16 @@ pre {
 }
 #dock button, #subtitle { pointer-events: auto; }
 
+.live-status {
+  min-height: 1.2em;
+  margin: 6px 0 10px;
+  color: var(--brass);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+#perform-now { width: 100%; margin-top: 2px; }
+
 #subtitle {
   margin-left: min(380px, 100%);
   min-height: 3.2rem;
@@ -161,18 +171,28 @@ pre {
 .sub-line { margin: 2px auto 0; max-width: 46rem; font-size: 1.25rem; line-height: 1.4; }
 .sub-idle { margin: 0; color: var(--muted); font-size: 0.95rem; }
 
-#transport {
+#direct, #transport {
   display: flex;
   justify-content: center;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
   margin-left: min(380px, 100%);
+  pointer-events: auto;
 }
+#direct { gap: 6px; }
+#direct span {
+  color: var(--brass-dim);
+  font-family: "Gill Sans", "Trebuchet MS", sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#direct button.later { border-style: dashed; opacity: 0.9; }
 #beat-count { min-width: 4.5rem; text-align: center; color: var(--brass); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 760px) {
   #panel { max-height: 42vh; }
-  #subtitle, #transport { margin-left: 0; }
+  #subtitle, #direct, #transport { margin-left: 0; }
   .sub-line { font-size: 1.05rem; }
 }

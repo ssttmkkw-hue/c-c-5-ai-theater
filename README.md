@@ -8,9 +8,9 @@ This is not affiliated with any theatre, publisher, or model vendor. The Shakesp
 
 本项目与任何剧院、出版社或模型厂商都没有从属关系。《哈姆雷特》选段为公有领域。随选段附上的中文字幕是为本项目写的白话转述，不是已出版译本。
 
-There is no live AI backend in this version. Choosing “AI parser” in the panel falls back to the rule parser and says so.
+There is no live AI backend in this version. Choosing “AI parser” in the panel falls back to the rule parser and says so. A one-line premise does not call a model either: it becomes a local two-hander sketch and is labeled as such.
 
-这一版没有在线的 AI 后端。面板里选「AI 解析」时，会退回规则解析，并在解析记录里说明。
+这一版没有在线的 AI 后端。面板里选「AI 解析」时，会退回规则解析，并在解析记录里说明。一句话剧情也不会去调模型：它会变成一段本地双人草稿，并标明这一点。
 
 ## Run / 运行
 
@@ -29,6 +29,85 @@ Open `http://localhost:8877`. Port 8877 is the one this project uses; leave 5173
 The first visit opens a short note. Dismiss it with the button or Esc. The choice is remembered in `localStorage`.
 
 第一次打开会有一段说明。用按钮或 Esc 关掉。这个选择记在 `localStorage` 里。
+
+## Speed / Live / 速度与当场开演
+
+This exists so a show can start in seconds, not after a rendered video or a finished comic. The audience types a premise or pastes a script, the curtain opens immediately, and the first playable beat begins as soon as the parser has it. Later beats can still be arriving. A future server-side model can stream the same events into the director; the browser still never sees an API key.
+
+做这个，是为了让一场戏在几秒内开始，而不是等一段视频或一本漫画渲染完。观众写下一句剧情或贴上一整场剧本，大幕马上打开，解析器拿到第一拍能演的内容就开始。后面的拍可以还在路上。以后服务器上的模型也可以把同样的事件流推进导演；浏览器里仍然不会出现 API 密钥。
+
+### Live request / 当场开演
+
+The box at the top of the panel is the front door: “写一段剧本或一句话剧情 / Paste a script or a one-line premise”, then **开演 / Perform now**.
+
+面板最上面就是入口：「写一段剧本或一句话剧情 / Paste a script or a one-line premise」，然后按 **开演 / Perform now**。
+
+- A short note with no `HAMLET.` / `Ophelia:` cues is treated as a premise. v1 weaves it into a tiny original two-hander and labels it “local instant sketch, not an AI dramaturg (coming later)”. No paid API.
+- 没有 `HAMLET.` / `Ophelia:` 这种角色提示的短句，会当成剧情。第一版把它编进一段原创双人草稿，并写明「本地即兴草稿，不是 AI 编剧（以后再做）」。不调用付费接口。
+- A real script uses the streaming rule parser. Samples and the JSON preview stay where they were.
+- 真正的剧本走流式规则解析。示例和 JSON 预览还在原来的地方。
+- While it runs, a status line reads “解析中…已开演第 1 句 / Parsing… beat 1 already on stage”. If the director runs out of beats before `end`, the actors hold a small “waiting for the cue” glance.
+- 演出时会有一行状态：「解析中…已开演第 1 句 / Parsing… beat 1 already on stage」。导演把手头的拍演完、流还没结束时，演员会稍稍看向侧幕，像在等提示。
+
+### Stream events / 流式事件
+
+Full Performance JSON (above) is still what you save, load, and download. The live path speaks one JSON object per step. NDJSON is one object per line. Short beat aliases are accepted; the parser emits the long names.
+
+上面的完整 Performance JSON 仍是保存、载入和下载的格式。当场开演走一步一个 JSON 对象。NDJSON 是一行一个。拍上的短字段名可以读入；解析器写出的是长名字。
+
+```json
+{ "type": "meta", "title": "Instant sketch", "locale": "en", "characters": [] }
+{ "type": "character", "id": "player", "name": "Player", "costume": "traveler" }
+{ "type": "beat", "sceneId": "sketch", "speaker": "player", "line": "…", "emotion": "emphatic", "gesture": "point" }
+{ "type": "scene-end", "sceneId": "sketch" }
+{ "type": "warning", "message": "local-sketch" }
+{ "type": "end" }
+```
+
+| Alias / 短名 | Field / 字段 |
+| --- | --- |
+| `sid` | `sceneId` |
+| `sp` | `speaker` |
+| `ln` | `line` |
+| `zh` | `lineZh` |
+| `em` | `emotion` |
+| `g` | `gesture` |
+| `mv` | `moveTo` |
+| `lk` | `lookAt` |
+| `en` | `enterFrom` |
+| `ex` | `exitTo` |
+| `p` | `pauseMs` |
+| `k` | `kind` |
+
+`performanceToEvents` / `eventsToPerformance` / `eventsToNdjson` / `ndjsonToEvents` convert the two forms. `appendBeat(performance, beat)` adds one beat to a show that is still open. A late `character` event can spawn an actor before their entrance. A beat whose speaker was never introduced becomes a generic courtier instead of stalling the show.
+
+`performanceToEvents` / `eventsToPerformance` / `eventsToNdjson` / `ndjsonToEvents` 在两种格式之间转换。`appendBeat(performance, beat)` 往一场还没结束的演出里加一拍。晚到的 `character` 事件可以在上场前先把演员造出来。某一拍的说话人如果从没介绍过，会自动变成一个普通侍从，而不是把整场停住。
+
+### Directing / 导演
+
+A bar under the subtitle works during the show. `window.__theater.intervene(action)` is the same set of hooks.
+
+字幕下面有一条导演栏，演出时就能用。`window.__theater.intervene(action)` 是同一组钩子。
+
+| Action / 动作 | Now / 现在 | Later / 以后 |
+| --- | --- | --- |
+| `{ type: 'replay' }` | Replay the current beat (or the last one, if you are between cues). / 立刻重演当前这一拍（如果正在等下一拍，就重演刚才那句）。 | |
+| `{ type: 'angrier', scope: 'now' \| 'scene' }` | This speaker goes angry / emphatic for this beat and the next few (`scene` keeps it for the scene). Pitch and rate nudge up if the line is still being spoken. / 当前说话的人这一拍和后面几拍变得更怒、更重（`scene` 则维持到这场结束）。台词还没说完时，音高和语速会稍抬一点。 | |
+| `{ type: 'faster' }` / `{ type: 'hold' }` | Speed up, or pause. / 加快，或停住。 | |
+| `{ type: 'ending', note? }` | Actors glance toward the wings. A subtitle says a new ending will be written here, and a short **placeholder** couplet is appended. The button is dashed and marked “later”. / 演员看向侧幕。字幕写着新的结尾稍候，并接上两句**标明是占位**的收场。按钮是虚线，标着「稍后」。 | A streaming dramaturg can push replacement beats into `pushBeat` / `pushEvent` after this hook. v1 does not invent that scene with a model. / 以后的流式编剧可以在这个钩子之后用 `pushBeat` / `pushEvent` 把替换的拍推上来。第一版不会用模型现编那场戏。 |
+
+### Honest limits / 老实说做不到的
+
+- The rule parser is instant and shallow. It is not a dramaturg.
+- 规则解析很快，也很浅。它不是戏剧构作。
+- Premise sketches are local templates. The premise is quoted; the other lines are original filler, not a model’s scene.
+- 一句话剧情是本地模板。你的那句话会被引到台词里，其余是原创的填充，不是模型写的一场戏。
+- No live LLM runs in the browser. The AI parser’s `parseStream` is the seam: NDJSON or SSE from a backend you configure, otherwise one warning and the rule stream.
+- 浏览器里没有现场的大模型。AI 解析器的 `parseStream` 是接缝：你自己配置的后端可以回 NDJSON 或 SSE，否则只留下一条警告，然后用规则流。
+
+`getState()` adds `streaming`, `pendingBeats`, `streamEnded`, `timeToFirstBeatMs`, `lastIntervention`, and `holding`. `timeToFirstBeatMs` is how long it took from opening the live show to the first beat actually starting. `liveStart(text)` resolves at that moment, not when the curtain comes down. `parseStream`, `pushEvent`, and `pushBeat` are on `window.__theater` for a local test.
+
+`getState()` 额外有 `streaming`、`pendingBeats`、`streamEnded`、`timeToFirstBeatMs`、`lastIntervention` 和 `holding`。`timeToFirstBeatMs` 是从打开这场直播到第一拍真正开始的毫秒数。`liveStart(text)` 在那个时刻 resolve，而不是等大幕落下。`parseStream`、`pushEvent`、`pushBeat` 也在 `window.__theater` 上，给本地测试用。
 
 ## Paste a script / 粘贴剧本
 
@@ -164,16 +243,19 @@ src/actors/             rig, cast, audience
 src/camera/cameras.js   audience, cinematic, free
 src/ui/                 panel and strings
 src/data/               samples, subtitle glosses, curated JSON
-src/runtime/live.js     shared show state (streaming UI is only a stub)
+src/runtime/live.js     shared show state (streaming, holding, speed)
+src/performance/stream.js  NDJSON events ↔ Performance JSON
+src/parse/scan.js       shared rule scan for full parse and live stream
+src/parse/premise.js    local two-hander for a one-line premise
 src/util/math.js
 tools/prompt-performance.md
 tools/parse-with-claude.mjs
 tools/smoke-parse.mjs
 ```
 
-`window.__theater` exposes `load`, `play`, `pause`, `pasteAndPlay`, `setMuted`, `setCamera`, `setExperiment`, `getState`, and `waitIdle` for a local smoke test. It is not a supported public API.
+`window.__theater` exposes `load`, `play`, `pause`, `pasteAndPlay`, `setMuted`, `setCamera`, `setExperiment`, `getState`, `waitIdle`, `parseStream`, `liveStart`, `intervene`, `pushEvent`, and `pushBeat` for a local smoke test. It is not a supported public API.
 
-`window.__theater` 提供 `load`、`play`、`pause`、`pasteAndPlay`、`setMuted`、`setCamera`、`setExperiment`、`getState`、`waitIdle`，给本地冒烟测试用。这不是对外承诺的 API。
+`window.__theater` 提供 `load`、`play`、`pause`、`pasteAndPlay`、`setMuted`、`setCamera`、`setExperiment`、`getState`、`waitIdle`、`parseStream`、`liveStart`、`intervene`、`pushEvent`、`pushBeat`，给本地冒烟测试用。这不是对外承诺的 API。
 
 `tools/smoke-parse.mjs` checks the rule parser in Node, with no browser and no network. `tools/parse-with-claude.mjs` fills `tools/prompt-performance.md` and prints the prompt. It does **not** call `claude` unless you pass `--invoke` yourself, on a machine where that CLI is already installed. The page never runs it and never sees an API key.
 
@@ -215,8 +297,8 @@ Not in this version, and not promised as a schedule:
 
 这一版没有做，也不当成工期承诺：
 
-- Faster rehearsal controls, and a streaming path so a long script can start before the whole parse is finished. `src/runtime/live.js` only shares state today.
-- 更快的排练控制，以及流式路径，让长剧本不用等整份解析结束再开演。`src/runtime/live.js` 现在只是共享状态。
+- A real streaming dramaturg on the `ending` / `pushBeat` seam. The button and the hook are there; the model is not.
+- 在 `ending` / `pushBeat` 这条缝上接一个真正会流式写戏的编剧。按钮和钩子在，模型不在。
 - More actor styles than the eight costumes.
 - 比现在八套服装更多的演员样式。
 - A real server-side parser, if one is ever added, would keep the key off the page and return the same Performance JSON. v1 does not include that server.
