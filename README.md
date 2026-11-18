@@ -42,8 +42,8 @@ The box at the top of the panel is the front door: “写一段剧本或一句�
 
 面板最上面就是入口：「写一段剧本或一句话剧情 / Paste a script or a one-line premise」，然后按 **开演 / Perform now**。
 
-- A short note with no `HAMLET.` / `Ophelia:` cues is treated as a premise. v1 weaves it into a tiny original two-hander and labels it “local instant sketch, not an AI dramaturg (coming later)”. No paid API.
-- 没有 `HAMLET.` / `Ophelia:` 这种角色提示的短句，会当成剧情。第一版把它编进一段原创双人草稿，并写明「本地即兴草稿，不是 AI 编剧（以后再做）」。不调用付费接口。
+- A short note with no `HAMLET.` / `Ophelia:` cues is treated as a premise. v1 weaves it into a tiny original two-hander and labels it “local instant sketch, not an AI dramaturg (coming later)”. Conflict, love, and parting words pick different sketches. The actors do not mention the audience. No paid API.
+- 没有 `HAMLET.` / `Ophelia:` 这种角色提示的短句，会当成剧情。第一版把它编进一段原创双人草稿，并写明「本地即兴草稿，不是 AI 编剧（以后再做）」。冲突、爱、离别会换成不同的草稿。演员不提起观众。不调用付费接口。
 - A real script uses the streaming rule parser. Samples and the JSON preview stay where they were.
 - 真正的剧本走流式规则解析。示例和 JSON 预览还在原来的地方。
 - While it runs, a status line reads “解析中…已开演第 1 句 / Parsing… beat 1 already on stage”. If the director runs out of beats before `end`, the actors hold a small “waiting for the cue” glance.

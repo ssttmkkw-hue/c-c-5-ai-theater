@@ -11,11 +11,11 @@ Scores are from the house, about seven meters out, on this machine (SwiftShader)
 | | Look / 样子 | Motion / 动作 | Stiffness / 僵 | Load / 加载 | Runtime / 运行 | Effort / 工作量 | License / 许可 | Watching a play / 坐着看戏 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `procedural` | Chibi joints, brows, pupils | Crossfade poses, discrete talk beats | Medium. The snap-to-idle between gestures is gone. | None | ~20 meshes, no skinning. Cheap. | Already here; this round only fixed the face and the blend | Original | **Default.** Fastest first line, emotion reads from the seats |
-| `paper` | Flat cards, ink face | Same pose table on hinges, mouth scales | Low stiffness, little range. Reads as a choice, not a broken person | None | 15 planes, canvas textures | About a day of drawing and hinges | Original canvas | Good when you want a toy stage, not a body |
+| `paper` | Flat cards, ink face, thick head, crown / cloak / skirt | Same pose table on hinges, mouth scales | Low stiffness, little range. The head stays a block when the neck bows | None | Cards plus a few costume planes | About a day of drawing and hinges | Original canvas | Good when you want a toy stage, not a body |
 | `toon` | Cel bands, dark shell, rounder head | Same as procedural | Same as procedural, but the silhouette is easier to read | None | Extra shell mesh per part | Small | Original | Best cheap upgrade if the mannequin feels like clay |
 | `ik` | Same mannequin plus reaching hands | Two-bone arms, ankle plant, spine follows the look | Hands meet the gesture instead of a fixed euler. Elbows can still fold oddly | None | A few vector solves per frame | Medium | Original | Use when pointing and giving must hit a spot |
-| `gltf` | Blocky skinned human, adult proportions | `AnimationMixer` clips, 0.25s fades | Clips are short and loop or hold. Less finger detail than the joint rig | One small glTF when selected (~40KB) | 1 skinned mesh, 17 joints, 2 primitives | Generator plus mixer | CC0, made here | Useful comparison. Not the default: the face does less |
-| `vrm` | T-pose mannequin, expression morphs | Normalized humanoid bones, look-at, `aa` mouth | Arms are posed in code from a T-pose. Coarser than procedural | File ~30KB plus `@pixiv/three-vrm@2.1.0` from esm.sh, only when selected | Humanoid update + a few morphs | Highest. Version pin and a real VRM file | CC0 mesh. Loader is MIT, not vendored | Expression ceiling of this round. Too heavy to be the default |
+| `gltf` | Blocky skinned human with eye and mouth cards | `AnimationMixer` clips, 0.25s fades, blink on the cards | Clips are short and loop or hold. Less finger detail than the joint rig | One small glTF when selected (~40KB) | 1 skinned mesh, 17 joints, plus three face cards | Generator plus mixer | CC0, made here | Useful comparison. Not the default |
+| `vrm` | Mannequin with the same face cards, expression morphs | Bones lerp toward the gesture, look-at, `aa` and blink | Arms leave the T-pose. Coarser than procedural | File ~30KB, fetched once and reused, plus `@pixiv/three-vrm@2.1.0` from esm.sh, only when selected | Humanoid update + a few morphs | Highest. Version pin and a real VRM file | CC0 mesh. Loader is MIT, not vendored | Expression ceiling of this round. Too heavy to be the default |
 
 ## Recommendation / 建议
 
@@ -60,11 +60,15 @@ Details and the generator live in [../assets/actors/LICENSE.md](../assets/actors
 - Blocking marks default to off.
 - A local premise is still labeled in the status line. The spoken lines do not say “we are a sketch.”
 - An entrance with no `moveTo` walks to downstage left or right before the line.
-- The audience camera drifts a couple of centimeters, and leans in a little on a soliloquy.
+- The audience camera drifts a few centimeters, leans in a little on a soliloquy, and biases its look toward the speaker.
+- A listener drops the last gesture, tilts in, and nods. After the line, the speaker lowers the hand before the pause.
+- A one-line premise picks a conflict, love, or parting sketch when the words match. The lines stay inside the scene.
 
 - 手势会留下上一个姿势再交叉淡入。两个手势之间，手臂不会先掉回身侧。
 - 眉毛跟着情绪。瞳孔会跳视，也会偏向注视目标。角度不大时，身体转得比眼睛慢。
 - 走位标记默认关闭。
 - 本地剧情仍然标在状态行。台词里不说「我们是草稿」。
 - 没有 `moveTo` 的上场会先走到下场左或下场右，再开口。
-- 观众席机位有一两厘米的漂移，独白时稍稍靠近。
+- 观众席机位有几厘米的漂移，独白时稍稍靠近，视线会偏向正在说话的人。
+- 听的人会放下上一个手势，侧头，偶尔点头。一句说完，说话的人会在停顿前把手放下。
+- 一句话剧情若对上冲突、爱或离别，会换成对应的草稿。台词留在戏里。
